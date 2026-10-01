@@ -486,6 +486,8 @@ pub struct CatalogWeapon {
     pub t6_clip_models: [Option<String>; 2],
     /// What each T6 attachment the weapon takes does to it.
     pub t6_attachments: Vec<T6Attachment>,
+    /// How each T6 attachment the weapon takes changes its numbers.
+    pub t6_attachment_stats: Vec<T6AttachmentStats>,
     pub iw5_reload_overrides: Vec<fastfile_iw5::ReloadOverride>,
     pub iw5_anim_overrides: Vec<LeftoverAnimOverride>,
     pub iw5_fx_overrides: Vec<Iw5FxOverride>,
@@ -1383,6 +1385,7 @@ impl WeaponCatalog {
             attached_models: Default::default(),
             t6_clip_models: Default::default(),
             t6_attachments: Vec::new(),
+            t6_attachment_stats: Vec::new(),
             iw5_reload_overrides: Vec::new(),
             iw5_anim_overrides: Vec::new(),
             iw5_fx_overrides: Vec::new(),
@@ -2143,6 +2146,7 @@ impl WeaponCatalog {
             attached_models: Default::default(),
             t6_clip_models: Default::default(),
             t6_attachments: Vec::new(),
+            t6_attachment_stats: Vec::new(),
             iw5_reload_overrides,
             iw5_anim_overrides: leftover_anim_overrides,
             iw5_fx_overrides,
@@ -2282,6 +2286,7 @@ impl WeaponCatalog {
             attached_models: Default::default(),
             t6_clip_models: Default::default(),
             t6_attachments: Vec::new(),
+            t6_attachment_stats: Vec::new(),
             iw5_reload_overrides: Vec::new(),
             iw5_anim_overrides: Vec::new(),
             iw5_fx_overrides: Vec::new(),
@@ -2426,6 +2431,7 @@ impl WeaponCatalog {
                 .attachment_uniques()
                 .filter_map(|unique| capture_t6_attachment(unique))
                 .collect(),
+            t6_attachment_stats: weapon.attachments().map(capture_t6_attachment_stats).collect(),
             iw5_reload_overrides: Vec::new(),
             iw5_anim_overrides: Vec::new(),
             iw5_fx_overrides: Vec::new(),
@@ -3646,6 +3652,126 @@ pub struct T6Attachment {
     pub disable_base_attachment: bool,
     /// Removes the weapon's magazine (a fast mag carries its own).
     pub disable_base_clip: bool,
+}
+
+/// How a T6 attachment changes the numbers of a weapon of its class
+/// (its `WeaponAttachment`). Scales are 1 where it changes nothing.
+#[derive(Clone, Debug)]
+pub struct T6AttachmentStats {
+    /// The attachment table's index of the attachment.
+    pub kind: u32,
+    pub clip_size_scale: f32,
+    pub fire_time_scale: f32,
+    /// Reload, empty reload, reload add, quick and quick empty reload.
+    pub reload_time_scales: [f32; 5],
+    pub ads_in_time_scale: f32,
+    pub ads_out_time_scale: f32,
+    /// The optic's ADS FOV (`fADSZoomFov1`), when it sets one.
+    pub ads_zoom_fov: Option<f32>,
+    pub ads_zoom_in_frac: Option<f32>,
+    pub ads_zoom_out_frac: Option<f32>,
+    pub damage_range_scale: f32,
+    pub hip_spread_min_scale: f32,
+    pub hip_spread_max_scale: f32,
+    pub ads_move_speed_scale: f32,
+    pub ads_view_kick_center_speed_scale: f32,
+    pub ads_idle_amount_scale: f32,
+    /// FMJ: bullets pass through more.
+    pub penetrating: bool,
+    /// Fast mag (`bDualMag`): a shell-by-shell reload loads two at a time.
+    pub dual_mag: bool,
+}
+
+fn capture_t6_attachment_stats(a: fastfile_t6::weapon::AttachmentView<'_>) -> T6AttachmentStats {
+    use fastfile_t6::weapon::attachment as at;
+    // A scale the asset leaves at zero changes nothing.
+    let scale = |off| Some(a.f32_at(off)).filter(|v| *v > 0.0).unwrap_or(1.0);
+    let set = |off| Some(a.f32_at(off)).filter(|v| *v > 0.0);
+    T6AttachmentStats {
+        kind: a.attachment_type(),
+        clip_size_scale: scale(at::CLIP_SIZE_SCALE),
+        fire_time_scale: scale(at::FIRE_TIME_SCALE),
+        reload_time_scales: std::array::from_fn(|i| scale(at::RELOAD_TIME_SCALES + 4 * i as u32)),
+        ads_in_time_scale: scale(at::ADS_TRANS_IN_TIME_SCALE),
+        ads_out_time_scale: scale(at::ADS_TRANS_OUT_TIME_SCALE),
+        // A FOV of 1 is "unchanged" (a variable zoom sets only its steps).
+        ads_zoom_fov: set(at::ADS_ZOOM_FOV).filter(|fov| *fov > 1.0),
+        ads_zoom_in_frac: set(at::ADS_ZOOM_IN_FRAC),
+        ads_zoom_out_frac: set(at::ADS_ZOOM_OUT_FRAC),
+        damage_range_scale: scale(at::DAMAGE_RANGE_SCALE),
+        hip_spread_min_scale: scale(at::HIP_SPREAD_MIN_SCALE),
+        hip_spread_max_scale: scale(at::HIP_SPREAD_MAX_SCALE),
+        ads_move_speed_scale: scale(at::ADS_MOVE_SPEED_SCALE),
+        ads_view_kick_center_speed_scale: scale(at::ADS_VIEW_KICK_CENTER_SPEED_SCALE),
+        ads_idle_amount_scale: scale(at::ADS_IDLE_AMOUNT_SCALE),
+        penetrating: a.u32_at(at::PERKS) != 0,
+        dual_mag: a.flag(at::DUAL_MAG),
+    }
+}
+
+/// IW4 moves at this share of running speed while aiming
+/// (`PM_CmdScale_Walk`), times the weapon's ADS move speed scale.
+const ADS_WALK_SPEED_SCALE: f32 = 0.4;
+
+/// `facts` with the numbers of `stats` applied.
+fn apply_t6_attachment_stats(facts: &mut WeaponBodyFacts, stats: &T6AttachmentStats) {
+    let ms = |value: i32, scale: f32| (value as f32 * scale).round() as i32;
+    if stats.clip_size_scale != 1.0 && facts.clip_size > 0 {
+        facts.clip_size = (facts.clip_size as f32 * stats.clip_size_scale).round() as i32;
+    }
+    facts.fire_time_ms = ms(facts.fire_time_ms, stats.fire_time_scale);
+    let [reload, empty, add, _, _] = stats.reload_time_scales;
+    facts.reload_time_ms = ms(facts.reload_time_ms, reload);
+    facts.reload_empty_time_ms = ms(facts.reload_empty_time_ms, empty);
+    facts.reload_add_time_ms = ms(facts.reload_add_time_ms, add);
+    facts.reload_empty_add_time_ms = ms(facts.reload_empty_add_time_ms, empty);
+    facts.reload_start_time_ms = ms(facts.reload_start_time_ms, reload);
+    facts.reload_end_time_ms = ms(facts.reload_end_time_ms, reload);
+    // Rates are per transition: a shorter transition is a faster rate.
+    facts.ads_in_rate /= stats.ads_in_time_scale;
+    facts.ads_out_rate /= stats.ads_out_time_scale;
+    if let Some(fov) = stats.ads_zoom_fov {
+        facts.ads_zoom_fov = fov;
+    }
+    if let Some(frac) = stats.ads_zoom_in_frac {
+        facts.ads_zoom_in_frac = frac;
+    }
+    if let Some(frac) = stats.ads_zoom_out_frac {
+        facts.ads_zoom_out_frac = frac;
+    }
+    facts.max_damage_range *= stats.damage_range_scale;
+    facts.min_damage_range *= stats.damage_range_scale;
+    for min in [
+        &mut facts.hip_spread_stand_min,
+        &mut facts.hip_spread_ducked_min,
+        &mut facts.hip_spread_prone_min,
+    ] {
+        *min *= stats.hip_spread_min_scale;
+    }
+    for max in [
+        &mut facts.hip_spread_stand_max,
+        &mut facts.hip_spread_ducked_max,
+        &mut facts.hip_spread_prone_max,
+    ] {
+        *max *= stats.hip_spread_max_scale;
+    }
+    // Relative to walking, as IW4's (SMGs 2, rifles 1), and walking is 0.4
+    // of running: a stock speeds aiming up to running pace, not past it.
+    if stats.ads_move_speed_scale != 1.0 {
+        facts.ads_move_speed_scale = (facts.ads_move_speed_scale * stats.ads_move_speed_scale)
+            .min(1.0 / ADS_WALK_SPEED_SCALE);
+    }
+    facts.kick.f_ads_view_kick_center_speed *= stats.ads_view_kick_center_speed_scale;
+    facts.idle.ads_idle_amount *= stats.ads_idle_amount_scale;
+    // A pump shotgun's fast mag loads two shells a stroke, each stroke a
+    // little slower (its reload scales).
+    if stats.dual_mag && facts.segmented_reload {
+        facts.reload_ammo_add = facts.reload_ammo_add.max(1) * 2;
+    }
+    // FMJ doubles how deep bullets go, as IW4's does.
+    if stats.penetrating {
+        facts.penetrate_multiplier *= 2.0;
+    }
 }
 
 /// A T6 attachment model placed for one weapon: the name its copy is
@@ -5637,6 +5763,7 @@ struct WeaponRow {
     /// [`CatalogWeapon::t6_attachments`].
     t6_clip_models: [Option<String>; 2],
     t6_attachments: Vec<T6Attachment>,
+    t6_attachment_stats: Vec<T6AttachmentStats>,
 
     iw5_configuration: Option<(u32, Iw5AttachmentSelection)>,
     prepared_attachments: Vec<String>,
@@ -5728,6 +5855,7 @@ impl Default for WeaponRow {
             attachment_world_models: Vec::new(),
             t6_clip_models: Default::default(),
             t6_attachments: Vec::new(),
+            t6_attachment_stats: Vec::new(),
             iw5_configuration: None,
             prepared_attachments: Vec::new(),
             iw5_attachment_slots: std::array::from_fn(|_| None),
@@ -5865,6 +5993,12 @@ fn compose_t6_configuration(base: &WeaponRow, kinds: &[u32], name: String) -> Op
                 row.sz_xanims[slot] = Some(clip.clone());
             }
         }
+    }
+    for stats in kinds
+        .iter()
+        .filter_map(|&kind| base.t6_attachment_stats.iter().find(|stats| stats.kind == kind))
+    {
+        apply_t6_attachment_stats(&mut row.facts, stats);
     }
     for attachment in &singles {
         row.hide_tags.extend(attachment.hide_tags.iter().cloned());
@@ -6265,6 +6399,15 @@ impl WeaponBuild {
             if facts.offhand_class != 0 && stand_in_facts.offhand_class != 0 {
                 facts.offhand_class = stand_in_facts.offhand_class;
             }
+            // T6 weapons carry no penetration multiplier: without the
+            // stand-in's, their bullets would stop at the first surface.
+            if facts.penetrate_multiplier == 0.0 {
+                facts.penetrate_multiplier = if stand_in_facts.penetrate_multiplier > 0.0 {
+                    stand_in_facts.penetrate_multiplier
+                } else {
+                    1.0
+                };
+            }
             if facts.parallel_bounce.is_none() || facts.perpendicular_bounce.is_none() {
                 facts.parallel_bounce = stand_in_facts.parallel_bounce;
                 facts.perpendicular_bounce = stand_in_facts.perpendicular_bounce;
@@ -6400,6 +6543,7 @@ impl WeaponBuild {
                     attachment
                 })
                 .collect();
+            dressed.t6_attachment_stats = own.t6_attachment_stats.clone();
             dressed.name = own.name;
             dressed.namespace = crate::AssetNamespace::T6;
             dressed.alternate_weapon = own.alternate_weapon;
@@ -7232,6 +7376,7 @@ impl WeaponBuild {
                 attachment_world_models: entry.attached_models[1].clone(),
                 t6_clip_models: entry.t6_clip_models,
                 t6_attachments: entry.t6_attachments,
+                t6_attachment_stats: entry.t6_attachment_stats,
                 iw5_configuration: None,
                 prepared_attachments: Vec::new(),
                 iw5_attachment_slots: entry.iw5_attachment_slots,

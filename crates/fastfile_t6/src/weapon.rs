@@ -30,6 +30,10 @@ pub mod variant {
     /// (and each authored pair, see [`super::unique::COMBINED_MASK`]) does
     /// to this weapon, [`ATTACHMENT_UNIQUE_COUNT`] slots.
     pub const ATTACHMENT_UNIQUES: u32 = 28;
+    /// `WeaponAttachment** attachments`: the attachments the variant takes,
+    /// indexed by attachment type ([`super::attachment`]).
+    pub const ATTACHMENTS: u32 = 24;
+    pub const ATTACHMENT_COUNT: u32 = 63;
     pub const ATTACHMENT_UNIQUE_COUNT: u32 = 95;
     pub const CLIP_SIZE: u32 = 476;
     pub const RELOAD_TIME: u32 = 480;
@@ -303,6 +307,73 @@ pub mod unique {
     pub const FIRE_SOUND_PLAYER: u32 = 260;
 }
 
+/// `WeaponAttachment` (284 bytes): what an attachment does to any weapon
+/// of a class. Scales are 1 and zoom FOVs 1 where the attachment changes
+/// nothing.
+pub mod attachment {
+    pub const NAME: u32 = 0;
+    pub const TYPE: u32 = 8;
+    pub const SILENCED: u32 = 44;
+    pub const DUAL_MAG: u32 = 45;
+    pub const LASER_SIGHT: u32 = 46;
+    pub const DAMAGE_RANGE_SCALE: u32 = 52;
+    /// `fADSZoomFov1..3`.
+    pub const ADS_ZOOM_FOV: u32 = 56;
+    pub const ADS_ZOOM_IN_FRAC: u32 = 68;
+    pub const ADS_ZOOM_OUT_FRAC: u32 = 72;
+    pub const ADS_TRANS_IN_TIME_SCALE: u32 = 76;
+    pub const ADS_TRANS_OUT_TIME_SCALE: u32 = 80;
+    pub const ADS_VIEW_KICK_CENTER_SPEED_SCALE: u32 = 92;
+    pub const ADS_IDLE_AMOUNT_SCALE: u32 = 96;
+    pub const ADS_MOVE_SPEED_SCALE: u32 = 156;
+    pub const HIP_SPREAD_MIN_SCALE: u32 = 160;
+    pub const HIP_SPREAD_MAX_SCALE: u32 = 164;
+    pub const FIRE_TIME_SCALE: u32 = 188;
+    /// Reload, empty reload, reload add, quick and quick empty reload.
+    pub const RELOAD_TIME_SCALES: u32 = 192;
+    pub const CLIP_SIZE_SCALE: u32 = 232;
+    /// `perks[2]`: FMJ's bullet penetration.
+    pub const PERKS: u32 = 252;
+}
+
+/// A `WeaponAttachment` of a finished zone load.
+#[derive(Clone, Copy)]
+pub struct AttachmentView<'z> {
+    load: &'z ZoneLoad,
+    asset: &'z LoadedAsset,
+}
+
+impl<'z> AttachmentView<'z> {
+    pub fn u32_at(&self, off: u32) -> u32 {
+        let o = off as usize;
+        self.asset
+            .header
+            .get(o..o + 4)
+            .map_or(0, |b| u32::from_le_bytes(b.try_into().unwrap()))
+    }
+
+    pub fn f32_at(&self, off: u32) -> f32 {
+        f32::from_bits(self.u32_at(off))
+    }
+
+    pub fn flag(&self, off: u32) -> bool {
+        self.asset.header.get(off as usize).is_some_and(|&b| b != 0)
+    }
+
+    pub fn name(&self) -> Option<&'z str> {
+        let p = crate::walk::decode_ptr(self.u32_at(attachment::NAME))?;
+        self.load
+            .blocks
+            .cstr(p)
+            .ok()
+            .and_then(|b| core::str::from_utf8(b).ok())
+    }
+
+    pub fn attachment_type(&self) -> u32 {
+        self.u32_at(attachment::TYPE)
+    }
+}
+
 /// An attached model of a [`AttachmentUniqueView`]: its name, the gun bone
 /// it hangs from (`None` for the root) and its offset and `(pitch, yaw,
 /// roll)` degrees there.
@@ -516,6 +587,16 @@ impl<'z> WeaponView<'z> {
 
     fn variant_ptr(&self, off: u32) -> Option<Ptr> {
         crate::walk::decode_ptr(self.variant_u32(off))
+    }
+
+    /// The attachments the variant takes.
+    pub fn attachments(&self) -> impl Iterator<Item = AttachmentView<'z>> + 'z {
+        let load = self.load;
+        let arr = self.variant_ptr(variant::ATTACHMENTS);
+        (0..variant::ATTACHMENT_COUNT).filter_map(move |i| {
+            let asset = load.asset_at(arr?.at(4 * i))?;
+            (asset.ty == crate::AssetType::Attachment).then_some(AttachmentView { load, asset })
+        })
     }
 
     /// The variant's attachment uniques: one per attachment it takes, and
