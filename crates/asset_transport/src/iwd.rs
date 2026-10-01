@@ -456,10 +456,10 @@ pub fn read_iwd_named(games_root: &Path, want: &str) -> Option<Vec<u8>> {
                 let Ok(mut entry) = archive.by_index(index) else {
                     continue;
                 };
-                if entry.name().replace('\\', "/").eq_ignore_ascii_case(&want) {
-                    if let Ok(bytes) = read_entry_bytes(&mut entry, None) {
-                        return Some(bytes);
-                    }
+                if entry.name().replace('\\', "/").eq_ignore_ascii_case(&want)
+                    && let Ok(bytes) = read_entry_bytes(&mut entry, None)
+                {
+                    return Some(bytes);
                 }
             }
         }
