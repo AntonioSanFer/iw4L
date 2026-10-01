@@ -27,6 +27,7 @@ pub enum MissingCombatFacts {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct CapturedCombatInput {
     pub dual_wield: bool,
+    pub fire_melees: bool,
     pub fire_time_ms: i32,
     pub fire_delay_ms: i32,
     pub raise_time_ms: i32,
@@ -162,6 +163,8 @@ impl AimAssistRanges {
 pub struct WeaponCombatFacts {
     pub aim_assist: AimAssistRanges,
     pub dual_wield: bool,
+    /// The fire button melees (a T6 riot shield bashes with it).
+    pub fire_melees: bool,
     pub fire_time_ms: i32,
     pub fire_delay_ms: i32,
     pub raise_time_ms: i32,
@@ -301,6 +304,7 @@ impl WeaponCombatFacts {
         Self {
             aim_assist: AimAssistRanges::NONE,
             dual_wield: false,
+            fire_melees: false,
             fire_time_ms: 0,
             fire_delay_ms: 0,
             raise_time_ms: 0,
@@ -414,6 +418,7 @@ impl WeaponCombatFacts {
         Ok(Self {
             aim_assist: AimAssistRanges::NONE,
             dual_wield: input.dual_wield,
+            fire_melees: input.fire_melees,
             fire_time_ms: input.fire_time_ms,
             fire_delay_ms: input.fire_delay_ms,
             raise_time_ms: input.raise_time_ms,
@@ -1159,7 +1164,8 @@ fn finish_weapon_tick(
             }
         };
 
-        if trigger {
+        // Its fire button melees instead (see `weapon_try_melee`).
+        if trigger && !facts.fire_melees {
             if hand.clip <= 0 {
                 hand.shot_count = 0;
                 if hand.stock > 0 && begin_weapon_reload(hand, facts) {
@@ -1191,7 +1197,10 @@ fn finish_weapon_tick(
             }
             hand.weaponstate = WeaponState::Firing as i32;
             hand.weapon_time = facts.fire_time_ms.max(1);
-            if facts.ads_fire_only {
+            // The delay runs once, from the press; the shot it delayed fires
+            // when it runs out rather than arming it again.
+            if delayed_fire {
+            } else if facts.ads_fire_only {
                 hand.weapon_delay =
                     ads_fire_only_delay_ms(cmd.f_weapon_pos_frac, facts.ads_in_rate);
             } else if facts.fire_delay_ms > 0 {
@@ -1416,11 +1425,19 @@ pub fn weapon_hands(
     cmd.melee_charge.pm_flags = cmd.pm_flags;
     cmd.melee_charge.pm_type = cmd.pm_type;
     cmd.melee_charge.e_flags = cmd.e_flags;
+    // A weapon that melees with the fire button presses melee with it.
+    let melee_buttons = |buttons: u32| {
+        if facts.fire_melees && buttons & BUTTON_ATTACK != 0 {
+            buttons | crate::BUTTON_MELEE
+        } else {
+            buttons
+        }
+    };
     cmd.melee_started = crate::melee::weapon_try_melee(
         hands,
         &facts.melee_facts(),
-        cmd.buttons,
-        cmd.old_buttons,
+        melee_buttons(cmd.buttons),
+        melee_buttons(cmd.old_buttons),
         cmd.f_weapon_pos_frac,
         cmd.last_weapon_hand,
         &mut cmd.melee_charge,

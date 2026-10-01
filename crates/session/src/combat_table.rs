@@ -27,6 +27,7 @@ pub(crate) fn validated_facts(
     }
     WeaponCombatFacts::try_from_captured(CapturedCombatInput {
         dual_wield: f.dual_wield,
+        fire_melees: f.fire_melees,
         fire_time_ms: f.fire_time_ms,
         fire_delay_ms: f.fire_delay_ms,
         raise_time_ms: f.raise_time_ms,

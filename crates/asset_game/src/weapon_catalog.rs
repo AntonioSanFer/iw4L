@@ -276,6 +276,8 @@ pub struct WeaponBodyFacts {
 
     pub no_dual_wield: bool,
     pub dual_wield: bool,
+    /// The fire button melees: a T6 riot shield bashes with it.
+    pub fire_melees: bool,
 }
 
 impl WeaponBodyFacts {
@@ -1729,6 +1731,7 @@ impl WeaponCatalog {
                 sway: WeaponSwayFacts::from_capture(geometry.sway),
                 dual_wield_view_model_offset: geometry.dual_wield_view_model_offset,
                 dual_wield: false,
+                fire_melees: false,
                 no_dual_wield: geometry.no_dual_wield,
             },
         });
@@ -3680,6 +3683,8 @@ pub struct T6AttachmentStats {
     pub penetrating: bool,
     /// Fast mag (`bDualMag`): a shell-by-shell reload loads two at a time.
     pub dual_mag: bool,
+    /// The attachment's alternate weapon fires from the weapon's magazine.
+    pub shared_ammo: bool,
 }
 
 fn capture_t6_attachment_stats(a: fastfile_t6::weapon::AttachmentView<'_>) -> T6AttachmentStats {
@@ -3706,6 +3711,7 @@ fn capture_t6_attachment_stats(a: fastfile_t6::weapon::AttachmentView<'_>) -> T6
         ads_idle_amount_scale: scale(at::ADS_IDLE_AMOUNT_SCALE),
         penetrating: a.u32_at(at::PERKS) != 0,
         dual_mag: a.flag(at::DUAL_MAG),
+        shared_ammo: a.flag(at::SHARED_AMMO),
     }
 }
 
@@ -5966,6 +5972,9 @@ fn compose_t6_configuration(base: &WeaponRow, kinds: &[u32], name: String) -> Op
     let mut row = base.clone();
     row.name = name;
     row.t6_attachments = Vec::new();
+    // The bare weapon's hides (its iron sights under its own scope) give
+    // way to the attachments'.
+    row.hide_tags = Vec::new();
     for (side, models) in [&mut row.attachment_view_models, &mut row.attachment_world_models]
         .into_iter()
         .enumerate()
@@ -6022,6 +6031,8 @@ pub struct T6PreparationCensus {
     /// Selections of an attachment the T6 table does not name, or of a
     /// weapon without T6 attachments.
     pub refused: usize,
+    /// Alternate weapons composed for configurations.
+    pub alternates: usize,
 }
 
 /// The T6 attachment table's index of each attachment, by name: the
@@ -6163,10 +6174,95 @@ impl WeaponBuild {
                 .resize(self.registry.rows.len(), CombatFxSlots::default());
             self.combat_slots.push(slots);
             self.registry.rows.push(row);
+            if let Some((alternate, raise)) =
+                self.compose_t6_alternate(base_id, self.registry.rows.len() - 1)
+            {
+                let parent = &mut self.registry.rows.last_mut().expect("just pushed");
+                parent.alternate_weapon = Some(alternate.name.clone());
+                parent.sz_xanims[weap_anim::ALT_RAISE] = raise;
+                parent.sz_xanims[weap_anim::ALT_DROP] = None;
+                parent.facts.alternate_drop_time_ms = 0;
+                self.combat_slots.push(slots);
+                self.registry.rows.push(alternate);
+                census.alternates += 1;
+            }
         }
         self.registry.rebuild_name_maps();
         self.registry.revision = mint_weapon_revision();
         census
+    }
+
+    /// The alternate weapon of T6 configuration `parent` (a grenade
+    /// launcher, select fire, a dual optic's second sight) as a row of its
+    /// own: T6 draws it with the configuration's attachments and returns to
+    /// the configuration, and a select fire or dual optic fires from its
+    /// magazine. Also the configuration's raise coming back from it.
+    ///
+    /// Switching plays only the raise of the weapon switched to: the
+    /// alternate's (`gl_to_grenade`) going in, the configuration's
+    /// (`gl_from_grenade`) coming back. Select fire's alternate has no raise
+    /// of its own and plays the attachment's `select_fire_in`, and the
+    /// configuration then plays its `select_fire_out` coming back.
+    fn compose_t6_alternate(
+        &self,
+        base_id: u32,
+        parent: usize,
+    ) -> Option<(WeaponRow, Option<String>)> {
+        let rows = &self.registry.rows;
+        let base = &rows[base_id as usize];
+        let config = &rows[parent];
+        let alt_name = config.alternate_weapon.as_deref()?;
+        let attachment = base.t6_attachments.iter().find(|a| {
+            a.mask == 0 && a.alt_weapon.as_deref().is_some_and(|alt| alt.eq_ignore_ascii_case(alt_name))
+        })?;
+        let shared = base
+            .t6_attachment_stats
+            .iter()
+            .find(|stats| stats.kind == attachment.kind)
+            .is_some_and(|stats| stats.shared_ammo);
+        let alt_id = *self
+            .registry
+            .by_namespaced
+            .get(&(crate::AssetNamespace::T6, normalize_weapon_name(alt_name)))?;
+        let mut alt = rows[alt_id as usize].clone();
+        alt.name = format!("{}+{}", alt.name, config.name);
+        alt.alternate_weapon = Some(config.name.clone());
+        alt.attachment_view_models = config.attachment_view_models.clone();
+        alt.attachment_world_models = config.attachment_world_models.clone();
+        alt.hide_tags = config.hide_tags.clone();
+        alt.t6_attachments = Vec::new();
+        // The alternate plays the configuration's clips (a grip's) where its
+        // own are the weapon's.
+        for slot in 0..WEAPON_ANIM_SLOTS {
+            if alt.sz_xanims[slot] == base.sz_xanims[slot] {
+                alt.sz_xanims[slot] = config.sz_xanims[slot].clone();
+            }
+        }
+        let authored = |slot: usize| {
+            attachment.xanims[slot]
+                .clone()
+                .filter(|clip| base.sz_xanims[slot].as_ref() != Some(clip))
+        };
+        let mut config_raise = config.sz_xanims[weap_anim::ALT_RAISE].clone();
+        if alt.sz_xanims[weap_anim::ALT_RAISE].is_none() || alt.sz_xanims[weap_anim::ALT_RAISE] == base.sz_xanims[weap_anim::ALT_RAISE] {
+            alt.sz_xanims[weap_anim::ALT_RAISE] = config_raise.clone();
+            if let Some(out) = authored(weap_anim::ALT_DROP) {
+                config_raise = Some(out);
+            }
+        }
+        alt.sz_xanims[weap_anim::ALT_DROP] = None;
+        alt.facts.alternate_drop_time_ms = 0;
+        if alt.facts.alternate_raise_time_ms <= 0 {
+            alt.facts.alternate_raise_time_ms = config.facts.alternate_raise_time_ms;
+        }
+        if shared {
+            alt.facts.ammo_index = parent as i32;
+            alt.facts.clip_index = parent as i32;
+            alt.facts.clip_size = config.facts.clip_size;
+            alt.facts.start_ammo = config.facts.start_ammo;
+            alt.facts.max_ammo = config.facts.max_ammo;
+        }
+        Some((alt, config_raise))
     }
 
     pub fn prepare_iw5_configurations(&mut self) -> Iw5PreparationCensus {
@@ -6399,6 +6495,8 @@ impl WeaponBuild {
             if facts.offhand_class != 0 && stand_in_facts.offhand_class != 0 {
                 facts.offhand_class = stand_in_facts.offhand_class;
             }
+            // A T6 riot shield bashes with the fire button.
+            facts.fire_melees = facts.weap_type == weapon_iw4::WEAPTYPE_SHIELD;
             // T6 weapons carry no penetration multiplier: without the
             // stand-in's, their bullets would stop at the first surface.
             if facts.penetrate_multiplier == 0.0 {

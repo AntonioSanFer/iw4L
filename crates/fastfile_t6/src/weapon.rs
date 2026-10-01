@@ -316,6 +316,9 @@ pub mod attachment {
     pub const SILENCED: u32 = 44;
     pub const DUAL_MAG: u32 = 45;
     pub const LASER_SIGHT: u32 = 46;
+    /// The alternate weapon (select fire, dual optic) fires from the
+    /// weapon's own magazine.
+    pub const SHARED_AMMO: u32 = 50;
     pub const DAMAGE_RANGE_SCALE: u32 = 52;
     /// `fADSZoomFov1..3`.
     pub const ADS_ZOOM_FOV: u32 = 56;
