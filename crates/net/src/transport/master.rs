@@ -273,6 +273,7 @@ struct MasterTarget {
 
 #[derive(Clone, Debug)]
 struct HostConfig {
+    password: String,
     auto_start_map: bool,
     target: MasterTarget,
     name: String,
@@ -285,6 +286,7 @@ struct HostConfig {
 
 #[derive(Clone, Debug)]
 struct JoinConfig {
+    password: String,
     target: MasterTarget,
     advert_id: AdvertId,
     map: String,
@@ -342,6 +344,7 @@ impl MasterLaunchIntent {
         match (host, join) {
             (Some(name), None) if !name.trim().is_empty() => {
                 Ok(Self(MasterLaunchMode::Host(HostConfig {
+                    password: std::env::var("IW4L_MASTER_PASSWORD").unwrap_or_default(),
                     auto_start_map: true,
                     target,
                     name,
@@ -353,6 +356,7 @@ impl MasterLaunchIntent {
                 })))
             }
             (None, Some(advert_id)) => Ok(Self(MasterLaunchMode::Join(JoinConfig {
+                password: std::env::var("IW4L_MASTER_PASSWORD").unwrap_or_default(),
                 target,
                 advert_id: advert_id.parse()?,
                 map: map.to_owned(),
@@ -394,6 +398,8 @@ pub struct MasterAdvert {
     pub locked: bool,
     pub in_match: bool,
     pub requires: ContentFlags,
+    pub available: ContentFlags,
+    pub password_protected: bool,
     pub missing: ContentFlags,
 }
 
@@ -437,11 +443,16 @@ impl Drop for MasterBrowser {
 #[derive(Clone, Debug)]
 pub enum MasterMenuAction {
     Refresh,
+    SetPassword {
+        password: String,
+    },
     Host {
+        password: String,
         map: String,
         mode: String,
     },
     Join {
+        password: String,
         advert_id: AdvertId,
         map: String,
         mode: String,
@@ -460,6 +471,9 @@ pub enum MasterMenuAction {
 
 #[derive(Clone, Debug)]
 enum MasterBridgeCommand {
+    SetPassword {
+        password: String,
+    },
     UpdateLobby {
         map: String,
         mode: String,
@@ -877,6 +891,7 @@ fn apply_master_menu_action(
     mut pending: ResMut<PendingMasterMenuAction>,
     mut intent: ResMut<MasterLaunchIntent>,
     mut role: ResMut<frame::RuntimeRole>,
+    settings: Res<frame::GameSettings>,
     browser: Option<Res<MasterBrowser>>,
     bridge: Option<Res<MasterBridge>>,
     mut commands: Commands,
@@ -888,6 +903,12 @@ fn apply_master_menu_action(
         MasterMenuAction::Refresh => {
             if let Some(browser) = browser {
                 browser.refresh();
+            }
+            return;
+        }
+        MasterMenuAction::SetPassword { password } => {
+            if let Some(bridge) = bridge {
+                bridge.send(MasterBridgeCommand::SetPassword { password });
             }
             return;
         }
@@ -948,11 +969,16 @@ fn apply_master_menu_action(
     let browser = browser.clone();
     match action {
         MasterMenuAction::Refresh
+        | MasterMenuAction::SetPassword { .. }
         | MasterMenuAction::UpdateLobby { .. }
         | MasterMenuAction::StartMatch { .. }
         | MasterMenuAction::VoteToSkip
         | MasterMenuAction::LeaveLobby => unreachable!(),
-        MasterMenuAction::Host { map, mode } => {
+        MasterMenuAction::Host {
+            map,
+            mode,
+            password,
+        } => {
             let requires = match content_required_by_map(&map) {
                 Ok(value) => value,
                 Err(error) => {
@@ -961,9 +987,10 @@ fn apply_master_menu_action(
                 }
             };
             intent.0 = MasterLaunchMode::Host(HostConfig {
+                password,
                 auto_start_map: false,
                 target: browser.target,
-                name: std::env::var("IW4L_MASTER_HOST_NAME").unwrap_or_else(|_| "iw4l host".into()),
+                name: settings.player_name.clone(),
                 map,
                 mode,
                 max_players: match parse_max_players() {
@@ -979,11 +1006,13 @@ fn apply_master_menu_action(
             *role = frame::RuntimeRole::Listen;
         }
         MasterMenuAction::Join {
+            password,
             advert_id,
             map,
             mode,
         } => {
             intent.0 = MasterLaunchMode::Join(JoinConfig {
+                password,
                 target: browser.target,
                 advert_id,
                 map,
@@ -1081,6 +1110,8 @@ fn browser_worker(
                             locked: advert.locked,
                             in_match: advert.in_match,
                             requires: advert.requires,
+                            available: advert.available,
+                            password_protected: advert.password_protected,
                             missing: advert.requires.missing_from(have),
                         })
                         .collect();
@@ -1104,7 +1135,7 @@ fn browser_worker(
             drop(current);
 
             let seen_refresh = refresh.load(Ordering::Relaxed);
-            for _ in 0..20 {
+            for _ in 0..50 {
                 tokio::select! {
                     _ = cancel.cancelled() => return,
                     _ = tokio::time::sleep(Duration::from_millis(100)) => {}
@@ -1683,6 +1714,8 @@ async fn session_main(
                 mode: config.mode.clone(),
                 max_players: config.max_players,
                 requires: config.requires,
+                available: config.have,
+                password: config.password.clone(),
             },
         }
     } else {
@@ -1691,6 +1724,7 @@ async fn session_main(
             request_id: take_id(&mut request_id),
             body: RequestBody::JoinRoom {
                 room_id: config.advert_id,
+                password: config.password.clone(),
                 have: config.have,
             },
         }
@@ -2126,6 +2160,16 @@ fn handle_command(
         return Ok(CommandEffect::Continue);
     }
     match command {
+        MasterBridgeCommand::SetPassword { password } => {
+            enqueue_control(
+                control_tx,
+                ControlFrame::Request(ControlRequest {
+                    request_id: take_id(request_id),
+                    body: RequestBody::SetPassword { password },
+                }),
+                role,
+            )?;
+        }
         MasterBridgeCommand::UpdateLobby { map, mode } => {
             enqueue_control(
                 control_tx,

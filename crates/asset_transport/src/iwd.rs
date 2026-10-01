@@ -312,9 +312,13 @@ fn read_pooled_entry(
     let inflate_at = std::time::Instant::now();
     let mut entry = archive
         .by_name(entry_name)
-        .map_err(|error| format!("cannot read {entry_name}: {error}"))?;
+        .map_err(|error| {
+            format!("cannot open IWD entry {entry_name} in {archive_path:?}: {error}")
+        })?;
     let bytes = read_entry_bytes(&mut entry, limit)
-        .map_err(|error| format!("cannot read {entry_name}: {error}"))?;
+        .map_err(|error| {
+            format!("cannot read IWD entry {entry_name} in {archive_path:?}: {error}")
+        })?;
     IWD_INFLATE_NS.fetch_add(inflate_at.elapsed().as_nanos() as u64, Ordering::Relaxed);
     Ok(bytes)
 }
