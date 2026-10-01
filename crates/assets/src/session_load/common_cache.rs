@@ -739,6 +739,11 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
 
     weapons.set_family_tables(cac_tables.clone());
     let iw5_prepared = weapons.prepare_iw5_configurations();
+    let t6_prepared = weapons.prepare_t6_configurations();
+    common_report.push(format!(
+        "T6 configurations: prepared={} refused={}",
+        t6_prepared.prepared, t6_prepared.refused
+    ));
     weapons.resolve_fpv_mesh_edges(&fpv_meshes);
     weapons.resolve_fpv_hands(&fpv_meshes, &asset_model::BodyMeshCatalog::default());
     weapons.resolve_world_model_edges(&world_weapons);

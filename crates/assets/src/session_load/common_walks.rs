@@ -884,7 +884,7 @@ fn t6_class_tables(
             if asset_game::is_stats_table_name(&table.name) {
                 Some(table)
             } else if table.name.eq_ignore_ascii_case("mp/attachmentTable.csv") {
-                Some(t6_dual_wield_attachment(table))
+                Some(table)
             } else {
                 None
             }
@@ -896,29 +896,6 @@ fn t6_class_tables(
         zone.path.display()
     ));
     tables
-}
-
-/// The T6 attachment table cut to its header and the dual-wield row. T6
-/// builds its other attachments onto a gun at runtime, which no weapon row
-/// here carries; dual wield is a weapon pair of its own (`X_dw_mp` and
-/// `X_lh_mp`), so it is the one attachment a class can hold.
-fn t6_dual_wield_attachment(
-    table: asset_game::CapturedStringTable,
-) -> asset_game::CapturedStringTable {
-    let keep: Vec<i32> = (0..table.rows as i32)
-        .filter(|&row| row == 0 || table.cell(row, 4).eq_ignore_ascii_case("dw"))
-        .collect();
-    let cells = keep
-        .iter()
-        .flat_map(|&row| (0..table.columns as i32).map(move |col| (row, col)))
-        .map(|(row, col)| table.cell(row, col).to_owned())
-        .collect();
-    asset_game::CapturedStringTable {
-        name: table.name.clone(),
-        columns: table.columns,
-        rows: keep.len(),
-        cells,
-    }
 }
 
 pub(super) fn walk_t6_weapon_bundle(

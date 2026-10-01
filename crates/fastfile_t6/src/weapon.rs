@@ -26,6 +26,11 @@ pub mod variant {
     pub const ATTACH_VIEW_MODEL_ROTATIONS: u32 = 248;
     pub const ATTACH_WORLD_MODEL_ROTATIONS: u32 = 344;
     pub const ATTACH_MODEL_COUNT: u32 = 8;
+    /// `WeaponAttachmentUnique** attachmentUniques`: what each attachment
+    /// (and each authored pair, see [`super::unique::COMBINED_MASK`]) does
+    /// to this weapon, [`ATTACHMENT_UNIQUE_COUNT`] slots.
+    pub const ATTACHMENT_UNIQUES: u32 = 28;
+    pub const ATTACHMENT_UNIQUE_COUNT: u32 = 95;
     pub const CLIP_SIZE: u32 = 476;
     pub const RELOAD_TIME: u32 = 480;
     pub const RELOAD_EMPTY_TIME: u32 = 484;
@@ -261,6 +266,177 @@ pub mod weap_anim {
     pub const ADS_DOWN: usize = 86;
 }
 
+/// `WeaponAttachmentUnique` (424 bytes): one attachment as one weapon
+/// carries it.
+pub mod unique {
+    pub const NAME: u32 = 0;
+    /// `eAttachment`: the attachment table's index (`acog` 1, `gl` 11, …).
+    pub const TYPE: u32 = 4;
+    /// Non-zero for an authored pair: `1 << type` of both attachments.
+    pub const COMBINED_MASK: u32 = 16;
+    pub const ALT_WEAPON_NAME: u32 = 20;
+    /// `unsigned short* hideTags`: 32 script strings.
+    pub const HIDE_TAGS: u32 = 36;
+    pub const HIDE_TAG_COUNT: u32 = 32;
+    pub const VIEW_MODEL: u32 = 40;
+    pub const VIEW_MODEL_ADDITIONAL: u32 = 44;
+    pub const WORLD_MODEL: u32 = 52;
+    pub const WORLD_MODEL_ADDITIONAL: u32 = 56;
+    /// The gun bone the models hang from; empty for the gun's root.
+    pub const VIEW_MODEL_TAG: u32 = 60;
+    pub const WORLD_MODEL_TAG: u32 = 64;
+    pub const VIEW_MODEL_OFFSETS: u32 = 68;
+    pub const WORLD_MODEL_OFFSETS: u32 = 80;
+    pub const VIEW_MODEL_ROTATIONS: u32 = 92;
+    pub const WORLD_MODEL_ROTATIONS: u32 = 104;
+    pub const VIEW_MODEL_ADD_OFFSETS: u32 = 116;
+    pub const WORLD_MODEL_ADD_OFFSETS: u32 = 128;
+    pub const VIEW_MODEL_ADD_ROTATIONS: u32 = 140;
+    pub const WORLD_MODEL_ADD_ROTATIONS: u32 = 152;
+    /// The weapon's own attached optic (or its magazine) is removed.
+    pub const DISABLE_BASE_ATTACHMENT: u32 = 168;
+    pub const DISABLE_BASE_CLIP: u32 = 169;
+    /// `const char** szXAnims`: the weapon's clips with this attachment, by
+    /// [`super::weap_anim`]; an empty name keeps the weapon's own.
+    pub const XANIMS: u32 = 232;
+    pub const FIRE_SOUND: u32 = 256;
+    pub const FIRE_SOUND_PLAYER: u32 = 260;
+}
+
+/// An attached model of a [`AttachmentUniqueView`]: its name, the gun bone
+/// it hangs from (`None` for the root) and its offset and `(pitch, yaw,
+/// roll)` degrees there.
+pub type UniqueModel<'z> = (&'z str, Option<&'z str>, [f32; 3], [f32; 3]);
+
+/// A `WeaponAttachmentUnique` of a finished zone load.
+#[derive(Clone, Copy)]
+pub struct AttachmentUniqueView<'z> {
+    load: &'z ZoneLoad,
+    asset: &'z LoadedAsset,
+}
+
+impl<'z> AttachmentUniqueView<'z> {
+    fn u32_at(&self, off: u32) -> u32 {
+        let o = off as usize;
+        self.asset
+            .header
+            .get(o..o + 4)
+            .map_or(0, |b| u32::from_le_bytes(b.try_into().unwrap()))
+    }
+
+    fn vec3(&self, off: u32) -> [f32; 3] {
+        core::array::from_fn(|i| f32::from_bits(self.u32_at(off + 4 * i as u32)))
+    }
+
+    fn str_at(&self, off: u32) -> Option<&'z str> {
+        let p = crate::walk::decode_ptr(self.u32_at(off))?;
+        self.load
+            .blocks
+            .cstr(p)
+            .ok()
+            .and_then(|b| core::str::from_utf8(b).ok())
+            .filter(|name| !name.is_empty())
+    }
+
+    pub fn name(&self) -> Option<&'z str> {
+        self.str_at(unique::NAME)
+    }
+
+    pub fn attachment_type(&self) -> u32 {
+        self.u32_at(unique::TYPE)
+    }
+
+    pub fn combined_mask(&self) -> u32 {
+        self.u32_at(unique::COMBINED_MASK)
+    }
+
+    pub fn alt_weapon(&self) -> Option<&'z str> {
+        self.str_at(unique::ALT_WEAPON_NAME)
+    }
+
+    pub fn flag(&self, off: u32) -> bool {
+        self.asset.header.get(off as usize).is_some_and(|&b| b != 0)
+    }
+
+    pub fn sound(&self, off: u32) -> Option<&'z str> {
+        self.str_at(off)
+    }
+
+    /// The asset a model field named when this was loaded.
+    fn model_name(&self, off: u32) -> Option<&'z str> {
+        let model = &self.load.assets[self.asset.field(off)?];
+        let p = crate::walk::decode_ptr(u32::from_le_bytes(model.header.get(0..4)?.try_into().ok()?))?;
+        self.load
+            .blocks
+            .cstr(p)
+            .ok()
+            .and_then(|b| core::str::from_utf8(b).ok())
+    }
+
+    /// The models this attachment hangs on the first-person (`view`) or
+    /// world gun: the main one, then the additional one (a mount).
+    pub fn models(&self, view: bool) -> [Option<UniqueModel<'z>>; 2] {
+        use unique as u;
+        let (model, add, tag, offsets, rotations, add_offsets, add_rotations) = if view {
+            (
+                u::VIEW_MODEL,
+                u::VIEW_MODEL_ADDITIONAL,
+                u::VIEW_MODEL_TAG,
+                u::VIEW_MODEL_OFFSETS,
+                u::VIEW_MODEL_ROTATIONS,
+                u::VIEW_MODEL_ADD_OFFSETS,
+                u::VIEW_MODEL_ADD_ROTATIONS,
+            )
+        } else {
+            (
+                u::WORLD_MODEL,
+                u::WORLD_MODEL_ADDITIONAL,
+                u::WORLD_MODEL_TAG,
+                u::WORLD_MODEL_OFFSETS,
+                u::WORLD_MODEL_ROTATIONS,
+                u::WORLD_MODEL_ADD_OFFSETS,
+                u::WORLD_MODEL_ADD_ROTATIONS,
+            )
+        };
+        let tag = self.str_at(tag);
+        [
+            (model, offsets, rotations),
+            (add, add_offsets, add_rotations),
+        ]
+        .map(|(model, offsets, rotations)| {
+            Some((
+                self.model_name(model)?,
+                tag,
+                self.vec3(offsets),
+                self.vec3(rotations),
+            ))
+        })
+    }
+
+    /// The clip in `slot` ([`weap_anim`]), when this attachment names one.
+    pub fn xanim(&self, slot: u32) -> Option<&'z str> {
+        let arr = crate::walk::decode_ptr(self.u32_at(unique::XANIMS))?;
+        let p = self.load.blocks.ptr_at(arr.at(4 * slot)).ok()??;
+        self.load
+            .blocks
+            .cstr(p)
+            .ok()
+            .and_then(|b| core::str::from_utf8(b).ok())
+            .filter(|name| !name.is_empty())
+    }
+
+    /// The gun bones this attachment hides (iron sights under an optic).
+    pub fn hide_tags(&self) -> impl Iterator<Item = &'z str> + 'z {
+        let load = self.load;
+        let arr = crate::walk::decode_ptr(self.u32_at(unique::HIDE_TAGS));
+        (0..unique::HIDE_TAG_COUNT).filter_map(move |i| {
+            let b = load.blocks.bytes(arr?.at(2 * i), 2).ok()?;
+            let id = u16::from_le_bytes([b[0], b[1]]);
+            (id != 0).then(|| load.script_string(id)).flatten()
+        })
+    }
+}
+
 /// `weapType_t`.
 pub mod weap_type {
     pub const BULLET: i32 = 0;
@@ -340,6 +516,18 @@ impl<'z> WeaponView<'z> {
 
     fn variant_ptr(&self, off: u32) -> Option<Ptr> {
         crate::walk::decode_ptr(self.variant_u32(off))
+    }
+
+    /// The variant's attachment uniques: one per attachment it takes, and
+    /// one per authored pair.
+    pub fn attachment_uniques(&self) -> impl Iterator<Item = AttachmentUniqueView<'z>> + 'z {
+        let load = self.load;
+        let arr = self.variant_ptr(variant::ATTACHMENT_UNIQUES);
+        (0..variant::ATTACHMENT_UNIQUE_COUNT).filter_map(move |i| {
+            let asset = load.asset_at(arr?.at(4 * i))?;
+            (asset.ty == crate::AssetType::AttachmentUnique)
+                .then_some(AttachmentUniqueView { load, asset })
+        })
     }
 
     pub fn has_def(&self) -> bool {

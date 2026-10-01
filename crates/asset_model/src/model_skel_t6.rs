@@ -296,6 +296,7 @@ pub fn capture_model_skel_t6(
         coll_surfs,
         // Weapons and arms: nothing the player collides with.
         movement_brushes: Vec::new(),
+        mount_tag: None,
         lod: Some(crate::ModelLodSelector::T5 {
             num_lods: model.h_u16(off::NUM_LODS) as i16,
             lod_dist,

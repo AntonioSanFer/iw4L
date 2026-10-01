@@ -149,6 +149,7 @@ fn capture_xanims(
             asset_game::t6_stand_in_for(name).is_some() || name == asset_game::T6_MELEE_WEAPON
         }) {
             wanted.extend(asset_game::t6_weapon_xanim_names(weapon));
+            wanted.extend(asset_game::t6_attachment_xanim_names(weapon));
         }
     }
     let (total, mut captured) = (wanted.len(), 0usize);
@@ -204,6 +205,7 @@ fn capture_sounds(
             .is_some()
         {
             names.extend(asset_game::t6_weapon_sound_names(weapon));
+            names.extend(asset_game::t6_attachment_sound_names(weapon));
         }
     }
     names.extend(content.note_sounds.iter().cloned());
@@ -931,6 +933,9 @@ fn capture_content(
     // Where each attached model (a magazine, a sniper's scope) rests on its
     // gun's root bone.
     let mut placements: BTreeMap<String, ([f32; 3], [f32; 3])> = BTreeMap::new();
+    // An attachment model's copy placed for one weapon: the model it
+    // copies and the gun bone it hangs from.
+    let mut copies: BTreeMap<String, (String, Option<String>)> = BTreeMap::new();
     for asset in &load.assets {
         let Some(weapon) = WeaponView::new(load, asset) else {
             continue;
@@ -948,6 +953,15 @@ fn capture_content(
                 wanted
                     .entry(asset_game::t6_model_name(name))
                     .or_insert((view, false, stand_in));
+            }
+        }
+        for unique in weapon.attachment_uniques() {
+            for view in [true, false] {
+                for placed in asset_game::t6_attachment_models(unique, view) {
+                    placements.insert(placed.copy.clone(), (placed.offset, placed.angles));
+                    wanted.entry(placed.copy.clone()).or_insert((view, false, stand_in));
+                    copies.insert(placed.copy, (placed.model, placed.tag));
+                }
             }
         }
         for view in [true, false] {
@@ -973,7 +987,9 @@ fn capture_content(
     let mut textures = DecodedTextures::new();
     let mut native_textures = DecodedTextures::new();
     for (name, (view, hands, stand_in)) in wanted {
-        let Some(&(load, asset)) = models.get(name.as_str()) else {
+        let copy = copies.get(&name);
+        let source = copy.map_or(name.as_str(), |(model, _)| model.as_str());
+        let Some(&(load, asset)) = models.get(source) else {
             content
                 .report
                 .push(format!("t6 content: {name}: in no zone read"));
@@ -993,6 +1009,10 @@ fn capture_content(
             && let Some(pose) = skel.pose.as_mut()
         {
             pose.root_rest = Some(attachment_rest(offset, angles));
+        }
+        if let Some((_, tag)) = copy {
+            skel.name = name.clone();
+            skel.mount_tag = tag.clone();
         }
         let mut surface_materials = Vec::with_capacity(model.surface_count());
         for surface in 0..model.surface_count() {

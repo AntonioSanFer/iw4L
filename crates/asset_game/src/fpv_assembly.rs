@@ -44,6 +44,18 @@ pub struct FpvAssembly {
     pub paired_bones: usize,
     pub combined_hands: bool,
     pub tags: FpvAssemblyTags,
+    /// Gun bones whose vertices fold away (see [`FpvHideMode::Bones`]).
+    pub collapsed_bones: Vec<usize>,
+}
+
+/// How a gun hides its hide tags. IW4 guns keep hideable parts in
+/// surfaces of their own and skip those surfaces; a T6 gun's sights share
+/// its body's surfaces, and T6 folds the hidden bones' vertices away.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum FpvHideMode {
+    #[default]
+    Surfaces,
+    Bones,
 }
 
 #[derive(Debug)]
@@ -72,6 +84,7 @@ pub struct FpvAssemblyKey {
     pub rocket: Option<FpvMeshIndex>,
     pub knife: Option<FpvMeshIndex>,
     pub hide_tags: Vec<String>,
+    pub hide_mode: FpvHideMode,
 }
 
 #[derive(Clone, Debug)]
@@ -117,6 +130,7 @@ impl FpvAssembly {
         rocket: bool,
         knife: Option<FpvMeshIndex>,
         hide_tags: &[String],
+        hide_mode: FpvHideMode,
     ) -> Result<Self, FpvAssemblyError> {
         let pose_of = |model: FpvMeshIndex| -> Result<&ModelPoseSrc, FpvAssemblyError> {
             catalog
@@ -203,18 +217,31 @@ impl FpvAssembly {
             tracker_light: tag("tag_motion_tracker_fx"),
         };
         let paired_bones = specs[0].0.num_bones + specs[1].0.num_bones;
+        let mut collapsed_bones = Vec::new();
         let parts = parts
             .into_iter()
             .zip(&dobj.models)
-            .map(|((model, role, _), slot)| FpvAssemblyPart {
-                model,
-                role,
-                bone_base: slot.base,
-                hide: if role == FpvPartRole::Gun {
-                    hide_words(catalog, model, hide_tags)
-                } else {
-                    None
-                },
+            .map(|((model, role, _), slot)| {
+                let hide = (role == FpvPartRole::Gun)
+                    .then(|| hide_words(catalog, model, hide_tags))
+                    .flatten();
+                let hide = match (hide_mode, hide) {
+                    (FpvHideMode::Bones, Some(words)) => {
+                        collapsed_bones.extend(
+                            (0..slot.bone_count)
+                                .filter(|&bone| words[bone >> 5] & (0x8000_0000u32 >> (bone & 31)) != 0)
+                                .map(|bone| slot.base + bone),
+                        );
+                        None
+                    }
+                    (_, hide) => hide,
+                };
+                FpvAssemblyPart {
+                    model,
+                    role,
+                    bone_base: slot.base,
+                    hide,
+                }
             })
             .collect();
         Ok(Self {
@@ -225,6 +252,7 @@ impl FpvAssembly {
             paired_bones,
             combined_hands: mounts.secondary_gun.is_some(),
             tags,
+            collapsed_bones,
         })
     }
 

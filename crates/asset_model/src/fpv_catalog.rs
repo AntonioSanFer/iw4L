@@ -657,9 +657,16 @@ pub fn plan_fpv_mounts(
                 .iter()
                 .any(|name| name.eq_ignore_ascii_case(root))
         });
+        // A T6 attachment hangs from the gun bone it names, else the root.
         let gun_root = || {
+            let tag = skel.mount_tag.as_deref().and_then(|tag| {
+                gun_skel
+                    .bone_names
+                    .iter()
+                    .find(|name| name.eq_ignore_ascii_case(tag))
+            });
             on_gun_root
-                .then(|| gun_skel.bone_names.first().map(|root| (1, root.as_str())))
+                .then(|| tag.or(gun_skel.bone_names.first()).map(|bone| (1, bone.as_str())))
                 .flatten()
         };
         let joint = if on_gun_root {

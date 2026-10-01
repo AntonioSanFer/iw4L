@@ -437,6 +437,17 @@ impl WeaponFamilies {
                         .cell(row, 8)
                         .split_ascii_whitespace()
                         .map(str::to_ascii_lowercase)
+                        // T6 names an attachment after the per-class asset
+                        // that carries it (`acog_sniper`, `reflex_pistol`).
+                        .map(|name| match name.rsplit_once('_') {
+                            Some((attachment, _))
+                                if namespace == AssetNamespace::T6
+                                    && !known.attachments.contains_key(&name) =>
+                            {
+                                attachment.to_owned()
+                            }
+                            _ => name,
+                        })
                         .collect(),
                 ),
             };
@@ -558,7 +569,7 @@ impl WeaponFamilies {
         out
     }
 
-    fn configuration_name(&self, family: &WeaponFamily, attachments: &[String]) -> String {
+    pub(crate) fn configuration_name(&self, family: &WeaponFamily, attachments: &[String]) -> String {
         if attachments.is_empty() {
             return family.key.base.clone();
         }
@@ -607,10 +618,16 @@ impl WeaponFamilies {
     }
 
     pub(crate) fn iw5_candidate_selections(&self) -> Vec<(u32, WeaponSelection)> {
+        self.candidate_selections(AssetNamespace::Iw5)
+    }
+
+    /// Every loaded family of `namespace` bare, with each attachment it
+    /// offers, and with each compatible pair of them.
+    pub(crate) fn candidate_selections(&self, namespace: AssetNamespace) -> Vec<(u32, WeaponSelection)> {
         let mut families: Vec<&WeaponFamily> = self
             .families
             .iter()
-            .filter(|family| family.key.namespace == AssetNamespace::Iw5 && family.base.is_some())
+            .filter(|family| family.key.namespace == namespace && family.base.is_some())
             .collect();
         families.sort_by_key(|family| family.key.asset_key());
         let mut out = Vec::new();
@@ -630,7 +647,7 @@ impl WeaponFamilies {
                     WeaponSelection::with(family.key.clone(), std::slice::from_ref(name)),
                 ));
                 for other in &names[i + 1..] {
-                    if self.compatible(AssetNamespace::Iw5, name, other) {
+                    if self.compatible(namespace, name, other) {
                         out.push((
                             base,
                             WeaponSelection::with(

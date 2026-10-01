@@ -187,6 +187,20 @@ pub struct LoadedAsset {
     /// inline as another asset's dependency.
     pub list_index: Option<usize>,
     pub header: Vec<u8>,
+    /// The assets the header's own pointer fields named when it was
+    /// loaded, by field offset. Read these rather than [`ZoneLoad::asset_at`]
+    /// on the header's address, which later loads may reuse.
+    pub fields: Vec<(u32, usize)>,
+}
+
+impl LoadedAsset {
+    /// Index (into [`ZoneLoad::assets`]) of the asset field `offset` names.
+    pub fn field(&self, offset: u32) -> Option<usize> {
+        self.fields
+            .iter()
+            .find(|(at, _)| *at == offset)
+            .map(|&(_, index)| index)
+    }
 }
 
 pub struct ZoneLoad {
@@ -290,6 +304,11 @@ struct Walker<'a> {
     temp_saved: Vec<usize>,
     assets: Vec<LoadedAsset>,
     asset_slots: BTreeMap<Ptr, usize>,
+    /// Every slot bound, in order: an asset's own fields are the ones
+    /// bound while it loaded.
+    slot_log: Vec<(Ptr, usize)>,
+    /// Each asset by where its header sits, as of now (memory is reused).
+    addresses: BTreeMap<Ptr, usize>,
     script_strings: Option<(Ptr, usize)>,
 }
 
@@ -596,7 +615,7 @@ impl<'a> Walker<'a> {
                     let aliased = self.mem.u32_at(target)?;
                     self.mem.write_u32(slot, aliased)?;
                     if let Some(&i) = self.asset_slots.get(&target) {
-                        self.asset_slots.insert(slot, i);
+                        self.bind_slot(slot, i);
                     }
                 }
                 // Otherwise the offset already is the pointer, in zone encoding.
@@ -761,9 +780,15 @@ impl<'a> Walker<'a> {
         Ok(())
     }
 
+    fn bind_slot(&mut self, slot: Ptr, index: usize) {
+        self.asset_slots.insert(slot, index);
+        self.slot_log.push((slot, index));
+    }
+
     /// `Loader_X::Load(&slot)` → `LoadPtr_X(false)`.
     fn load_asset(&mut self, asset: usize, slot: Ptr, list_index: Option<usize>) -> Result<()> {
         let schema: &'a AssetSchema = &self.schema.assets[asset];
+        let log_start = self.slot_log.len();
         let in_temp = schema.root_in_temp;
         if in_temp {
             self.push(XFILE_BLOCK_TEMP);
@@ -790,24 +815,38 @@ impl<'a> Walker<'a> {
 
                 let ty = asset_type_for(&schema.name).ok_or(WalkError::Schema)?;
                 let header = self.mem.bytes(at, root.size as usize)?.to_vec();
+                let end = at.at(root.size);
+                let mut fields: Vec<(u32, usize)> = Vec::new();
+                for &(field, index) in &self.slot_log[log_start..] {
+                    if (at..end).contains(&field) {
+                        let offset = field.offset - at.offset;
+                        fields.retain(|(o, _)| *o != offset);
+                        fields.push((offset, index));
+                    }
+                }
                 let index = self.assets.len();
                 self.assets.push(LoadedAsset {
                     ty,
                     list_index,
                     header,
+                    fields,
                 });
-                self.asset_slots.insert(slot, index);
+                self.bind_slot(slot, index);
+                self.addresses.insert(at, index);
                 if let Some(ins) = insert_slot {
                     self.mem.write_u32(ins, at.encode())?;
-                    self.asset_slots.insert(ins, index);
+                    self.bind_slot(ins, index);
                 }
             } else if in_temp {
                 let target = Ptr::decode(raw).ok_or(WalkError::BadPointer { raw })?;
                 let aliased = self.mem.u32_at(target)?;
                 self.mem.write_u32(slot, aliased)?;
                 if let Some(&i) = self.asset_slots.get(&target) {
-                    self.asset_slots.insert(slot, i);
+                    self.bind_slot(slot, i);
                 }
+            } else if let Some(&i) = Ptr::decode(raw).and_then(|at| self.addresses.get(&at)) {
+                // A pointer to an asset loaded earlier, left as it is.
+                self.bind_slot(slot, i);
             }
         }
         if in_temp {
@@ -848,6 +887,8 @@ pub fn load_zone(
         temp_saved: Vec::new(),
         assets: Vec::new(),
         asset_slots: BTreeMap::new(),
+        slot_log: Vec::new(),
+        addresses: BTreeMap::new(),
         script_strings: None,
     };
     let result = walk_list(&mut w, &mut on_asset);
