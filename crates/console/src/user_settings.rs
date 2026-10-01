@@ -305,7 +305,7 @@ pub(crate) fn save_user_settings(
     persistence.last_payload = Some(payload);
 }
 
-fn settings_path(artifacts: &std::path::Path) -> Option<PathBuf> {
+pub(crate) fn settings_path(artifacts: &std::path::Path) -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("IW4L_SETTINGS_PATH") {
         return Some(PathBuf::from(path));
     }
@@ -375,8 +375,9 @@ fn serialize_settings(settings: &frame::GameSettings, binds: &KeyBinds) -> Strin
         format!("pad_vibration={}", settings.pad_vibration),
         format!("pad_deadzone_left={:.2}", settings.pad_deadzone_left),
         format!("pad_deadzone_right={:.2}", settings.pad_deadzone_right),
-        "unbindall".to_owned(),
     ];
+    lines.extend(crate::game_folders::serialize_game_folders(settings));
+    lines.push("unbindall".to_owned());
     lines.extend(binds.list_lines());
     lines.push(String::new());
     lines.join("\n")
@@ -476,6 +477,7 @@ fn parse_settings(source: &str, settings: &mut frame::GameSettings, binds: &mut 
             "pad_vibration" => parse_into(value, &mut settings.pad_vibration),
             "pad_deadzone_left" => parse_into(value, &mut settings.pad_deadzone_left),
             "pad_deadzone_right" => parse_into(value, &mut settings.pad_deadzone_right),
+            _ if crate::game_folders::parse_game_folder(key, value, settings) => {}
             _ => warn!("ignored unknown setting `{key}`"),
         }
     }

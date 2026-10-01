@@ -125,6 +125,7 @@ pub fn launch(
     mode: LaunchMode,
     acceptance: Option<AcceptanceLaunch>,
 ) {
+    asset_transport::set_game_folders(console::stored_game_folders(&artifacts));
     diag::info!(Launch, "{}", asset_transport::games_root_report(&games));
 
     if let Some(plan) = crate::frame_owner::prefer_performance_cores() {

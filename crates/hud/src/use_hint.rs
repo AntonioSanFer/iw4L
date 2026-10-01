@@ -129,9 +129,13 @@ pub(crate) fn update(
             .0
             .display_name_key_of(weapon)
             .ok_or_else(|| format!("weapon {weapon}: display name missing"))?;
-        let name = strings
+        let name = weapons
             .0
-            .text(name_key)
+            .identity_namespace_of(weapon)
+            .map_or_else(
+                || strings.0.text(name_key),
+                |ns| strings.0.text_in(ns, name_key),
+            )
             .ok_or_else(|| format!("missing {name_key}"))?;
         let text = format!("{} {}", template.replace("&&1", bind), name);
         let (image, ratio) = weapons

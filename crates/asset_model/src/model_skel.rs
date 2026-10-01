@@ -756,6 +756,7 @@ fn capture_pose_src(
         quats,
         trans,
         base_mat,
+        root_rest: None,
     })
 }
 
@@ -1335,6 +1336,7 @@ fn capture_pose_src_t5(
         quats,
         trans,
         base_mat,
+        root_rest: None,
     })
 }
 
@@ -1837,6 +1839,7 @@ fn capture_pose_src_iw5(
         quats,
         trans,
         base_mat,
+        root_rest: None,
     })
 }
 

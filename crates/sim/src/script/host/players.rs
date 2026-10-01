@@ -344,6 +344,37 @@ fn bridge_class_weapon(world: &mut World, client: u32, slot: usize, weapon: u32)
     bridge.push((stand_in, weapon));
 }
 
+/// A foreign offhand is handed to the scripts by name: its stand-in's when
+/// it has one (the scripts refuse a lethal they do not know), else its own,
+/// which can belong to the script realm's weapon (`concussion_grenade_mp`).
+/// `None` when that name is the offhand's own.
+fn offhand_stand_in(world: &mut World, weapon: u32) -> Option<u32> {
+    let realm = world
+        .resource::<Runtime>()
+        .program
+        .as_ref()
+        .map_or(crate::script::Realm::Iw4, |p| p.rules());
+    let frame = FrameWorld::from_world(world);
+    let stand_in = frame
+        .weapon_setup(weapon)
+        .filter(|setup| setup.realm != realm)
+        .and_then(|setup| setup.stand_in.as_deref());
+    frame
+        .weapon_index_by_script_name(stand_in.unwrap_or(frame.weapon_script_name(weapon)))
+        .filter(|&named| weapon != 0 && named != weapon)
+}
+
+/// The give of an offhand's stand-in is bridged back to the chosen one.
+fn bridge_offhand(world: &mut World, client: u32, weapon: u32) {
+    let Some(stand_in) = offhand_stand_in(world, weapon) else {
+        return;
+    };
+    let mut runtime = world.resource_mut::<Runtime>();
+    let bridge = runtime.weapon_bridge.entry(client).or_default();
+    bridge.retain(|(from, _)| *from != stand_in);
+    bridge.push((stand_in, weapon));
+}
+
 pub(crate) fn bridged_weapon(world: &World, client: u32, weapon: u32) -> u32 {
     world
         .resource::<Runtime>()
@@ -396,6 +427,8 @@ pub(crate) fn choose_class(world: &mut World, client: u32, class: &crate::ClassD
         }
         return;
     }
+    bridge_offhand(world, client, class.lethal);
+    bridge_offhand(world, client, class.tactical);
     let data = class_profile_data(world, class);
     push_answer(
         world,
@@ -413,6 +446,8 @@ fn class_profile_data(world: &mut World, class: &crate::ClassDef) -> Vec<(String
         stand_in_for(world, 0, class.primary).unwrap_or(class.primary),
         stand_in_for(world, 1, class.secondary).unwrap_or(class.secondary),
     ];
+    let lethal = offhand_stand_in(world, class.lethal).unwrap_or(class.lethal);
+    let tactical = offhand_stand_in(world, class.tactical).unwrap_or(class.tactical);
     let index = class.id.0 as usize % 10;
     let frame = FrameWorld::from_world(world);
     let name = |weapon: u32| -> String {
@@ -447,7 +482,7 @@ fn class_profile_data(world: &mut World, class: &crate::ClassDef) -> Vec<(String
         put(format!("{key}.attachment.1"), &attachments[1]);
         put(format!("{key}.camo"), "none");
     }
-    put(format!("{prefix}.perks.0"), &name(class.lethal));
+    put(format!("{prefix}.perks.0"), &name(lethal));
     let mut perks = ["specialty_null"; 3];
     for id in class.perks {
         if let (Some(slot), Some(perk)) = (
@@ -466,7 +501,7 @@ fn class_profile_data(world: &mut World, class: &crate::ClassDef) -> Vec<(String
         &class.deathstreak
     };
     put(format!("{prefix}.perks.4"), deathstreak);
-    let tactical = name(class.tactical);
+    let tactical = name(tactical);
     put(
         format!("{prefix}.specialgrenade"),
         tactical.strip_suffix("_mp").unwrap_or(&tactical),

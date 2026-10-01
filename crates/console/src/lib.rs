@@ -23,6 +23,8 @@ mod diagnostics;
 pub mod editor;
 mod feature_dispatch;
 mod frontend;
+mod game_folders;
+mod saved_position;
 mod gamepad;
 pub mod input;
 pub mod plugin;
@@ -41,6 +43,7 @@ pub use class_dispatch::class_completions;
 pub use command::{ConsoleCommand, ConsoleQueue, SubmittedCommand};
 pub use editor::ConsoleEditor;
 pub use feature_dispatch::register_feature_commands;
+pub use game_folders::stored_game_folders;
 pub use plugin::{
     ConsoleCommandQueue, ConsoleDispatch, ConsoleDispatchSet, ConsoleFont, ConsolePlugin,
     ConsoleSettings, ConsoleState,

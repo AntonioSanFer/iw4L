@@ -21,7 +21,11 @@ pub(crate) fn localized_weapon_name(
         gaps.raise(GapCause::NoStringTable);
         return None;
     };
-    match strings.0.text(key) {
+    let text = match weapons.0.identity_namespace_of(viewmodel_index) {
+        Some(namespace) => strings.0.text_in(namespace, key),
+        None => strings.0.text(key),
+    };
+    match text {
         Some(text) => {
             gaps.clear(HudGap::LocalizedText);
             Some(text.to_owned())

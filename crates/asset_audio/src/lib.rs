@@ -5,6 +5,7 @@ mod sound_catalog;
 mod sound_load;
 mod sound_load_iw5;
 mod sound_load_t5;
+mod sound_load_t6;
 mod sound_wma_t5;
 mod zone_sound;
 
@@ -17,6 +18,7 @@ pub use sound_catalog::*;
 pub use sound_load::*;
 pub use sound_load_iw5::*;
 pub use sound_load_t5::*;
+pub use sound_load_t6::*;
 pub use sound_wma_t5::*;
 pub use zone_sound::*;
 

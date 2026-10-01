@@ -1,0 +1,144 @@
+//! Which IW4 weapon a T6 weapon borrows its models, animations, sounds and
+//! icons from while T6 content is not loaded.
+//!
+//! A T6 weapon without a stand-in is not captured: killstreak guns, turrets
+//! and scripted items have nothing a player could carry here.
+
+/// T6 name → IW4 stand-in, for the base names (variants are reduced to
+/// these first, see [`base_name`]).
+const STAND_INS: &[(&str, &str)] = &[
+    // Assault rifles.
+    ("an94", "ak47_mp"),
+    ("hk416", "m4_mp"),
+    ("scar", "scar_mp"),
+    ("sig556", "m16_mp"),
+    ("saritch", "fal_mp"),
+    ("sa58", "fal_mp"),
+    ("type95", "famas_mp"),
+    ("tar21", "tavor_mp"),
+    ("xm8", "fn2000_mp"),
+    // Submachine guns.
+    ("mp7", "mp5k_mp"),
+    ("vector", "kriss_mp"),
+    ("qcw05", "uzi_mp"),
+    ("pdw57", "p90_mp"),
+    ("evoskorpion", "tmp_mp"),
+    ("insas", "ump45_mp"),
+    // Light machine guns.
+    ("qbb95", "rpd_mp"),
+    ("lsat", "mg4_mp"),
+    ("mk48", "m240_mp"),
+    ("hamr", "sa80_mp"),
+    // Sniper rifles.
+    ("as50", "barrett_mp"),
+    ("dsr50", "cheytac_mp"),
+    ("svu", "m21_mp"),
+    ("ballista", "cheytac_mp"),
+    // Pistols.
+    ("fnp45", "usp_mp"),
+    ("fiveseven", "beretta_mp"),
+    ("kard", "deserteagle_mp"),
+    ("judge", "coltanaconda_mp"),
+    ("beretta93r", "beretta393_mp"),
+    // Shotguns.
+    ("saiga12", "aa12_mp"),
+    ("870mcs", "spas12_mp"),
+    ("srm1216", "striker_mp"),
+    ("ksg", "m1014_mp"),
+    // Launchers and specials.
+    ("smaw", "at4_mp"),
+    ("usrpg", "rpg_mp"),
+    ("fhj18", "stinger_mp"),
+    ("riotshield", "riotshield_mp"),
+    ("crossbow", "m79_mp"),
+    ("knife_ballistic", "throwingknife_mp"),
+    // Lethal equipment.
+    ("frag_grenade", "frag_grenade_mp"),
+    ("sticky_grenade", "semtex_mp"),
+    ("hatchet", "throwingknife_mp"),
+    ("satchel_charge", "c4_mp"),
+    ("claymore", "claymore_mp"),
+    ("bouncingbetty", "claymore_mp"),
+    // Tactical equipment.
+    ("flash_grenade", "flash_grenade_mp"),
+    ("concussion_grenade", "concussion_grenade_mp"),
+    ("willy_pete", "smoke_grenade_mp"),
+    ("emp_grenade", "concussion_grenade_mp"),
+    ("proximity_grenade", "concussion_grenade_mp"),
+    ("sensor_grenade", "smoke_grenade_mp"),
+    ("trophy_system", "claymore_mp"),
+    ("tactical_insertion", "flare_mp"),
+];
+
+/// The T6 weapon whose knife and swings every gun's melee borrows when
+/// the gun has no melee clip of its own (T6 rifles and snipers do not).
+pub const MELEE_WEAPON: &str = "knife_mp";
+
+/// `sf_an94_mp`, `dualoptic_an94_mp`, `gl_an94_mp`, `fnp45_dw_mp` and
+/// `fnp45_lh_mp` are all `an94` / `fnp45` underneath.
+pub fn base_name(name: &str) -> &str {
+    let mut base = name.strip_suffix("_mp").unwrap_or(name);
+    for prefix in ["sf_", "dualoptic_", "gl_"] {
+        if let Some(rest) = base.strip_prefix(prefix) {
+            base = rest;
+        }
+    }
+    for suffix in ["_dw", "_lh"] {
+        if let Some(rest) = base.strip_suffix(suffix) {
+            base = rest;
+        }
+    }
+    base
+}
+
+/// The IW4 weapon a T6 weapon borrows its looks from, or `None` when the
+/// weapon has no stand-in and is left out.
+pub fn stand_in_for(name: &str) -> Option<&'static str> {
+    let base = base_name(name);
+    STAND_INS
+        .iter()
+        .find(|(t6, _)| *t6 == base)
+        .map(|(_, iw4)| *iw4)
+}
+
+/// A T6 `StringTable` asset of a finished load (`name`, `columnCount`,
+/// `rowCount`, then `rowCount × columnCount` cells of `{ char* string, int hash }`).
+pub fn capture_t6_string_table(
+    load: &fastfile_t6::ZoneLoad,
+    asset: &fastfile_t6::LoadedAsset,
+) -> Option<crate::CapturedStringTable> {
+    if asset.ty != fastfile_t6::AssetType::StringTable {
+        return None;
+    }
+    let h = &asset.header;
+    let word = |at: usize| Some(u32::from_le_bytes(h.get(at..at + 4)?.try_into().ok()?));
+    let ptr = |raw: u32| {
+        (raw != 0 && raw < 0xFFFF_FFFE).then(|| fastfile_t6::Ptr {
+            block: ((raw - 1) >> 29) as u8,
+            offset: (raw - 1) & 0x1FFF_FFFF,
+        })
+    };
+    let text = |p: Option<fastfile_t6::Ptr>| {
+        p.and_then(|p| load.blocks.cstr(p).ok())
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+    };
+    let name = text(ptr(word(0)?))?;
+    let columns = usize::try_from(word(4)? as i32).ok()?;
+    let rows = usize::try_from(word(8)? as i32).ok()?;
+    let values = ptr(word(12)?);
+    let mut cells = Vec::with_capacity(rows * columns);
+    for i in 0..rows * columns {
+        let cell = values.map(|v| v.at(8 * i as u32));
+        let string = cell
+            .and_then(|c| load.blocks.ptr_at(c).ok().flatten())
+            .and_then(|p| load.blocks.cstr(p).ok())
+            .map_or_else(String::new, |b| String::from_utf8_lossy(b).into_owned());
+        cells.push(string);
+    }
+    Some(crate::CapturedStringTable {
+        name,
+        columns,
+        rows,
+        cells,
+    })
+}

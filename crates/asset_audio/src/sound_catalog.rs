@@ -333,7 +333,7 @@ pub struct CapturedSound {
 impl CapturedSound {
     pub fn ent_channel(&self, variant: usize) -> Option<u32> {
         match self.game {
-            ZoneGame::T5 => None,
+            ZoneGame::T5 | ZoneGame::T6 => None,
             ZoneGame::Iw4 | ZoneGame::Iw5 => self
                 .aliases
                 .get(variant)

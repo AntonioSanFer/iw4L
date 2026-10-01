@@ -36,7 +36,7 @@ impl FpvMeshKey {
 
 const fn game_default_hands_name(ns: AssetNamespace) -> &'static str {
     match ns {
-        AssetNamespace::Iw4 | AssetNamespace::Iw5 => VIEWHANDS_NAME,
+        AssetNamespace::Iw4 | AssetNamespace::Iw5 | AssetNamespace::T6 => VIEWHANDS_NAME,
         AssetNamespace::T5 => VIEWHANDS_NAME_T5,
     }
 }
@@ -501,6 +501,7 @@ impl FpvMeshCatalog {
                 AssetNamespace::Iw4 => 1,
                 AssetNamespace::T5 => 2,
                 AssetNamespace::Iw5 => 4,
+                AssetNamespace::T6 => 8,
             };
         }
         seen.values().filter(|bits| bits.count_ones() >= 2).count()
@@ -607,11 +608,15 @@ fn scope_attach_tag_name<'a>(gun_bones: &'a [String], scope_bones: &[String]) ->
     })
 }
 
+/// Where each of a gun's attachments mounts. `on_gun_root` mounts them all
+/// on the gun's root bone, where T6 places its attached models (by an offset
+/// baked into each model's root rest) whatever their root bones are named.
 pub fn plan_fpv_mounts(
     catalog: &FpvMeshCatalog,
     gun: FpvMeshIndex,
     attachments: &[FpvMeshIndex],
     rocket: Option<FpvMeshIndex>,
+    on_gun_root: bool,
 ) -> Result<FpvMountPlan, FpvMountError> {
     let gun_entry = catalog.get_at(gun.order()).ok_or_else(|| FpvMountError {
         model: format!("#{}", gun.order()),
@@ -652,7 +657,14 @@ pub fn plan_fpv_mounts(
                 .iter()
                 .any(|name| name.eq_ignore_ascii_case(root))
         });
-        let joint = if root_on_gun {
+        let gun_root = || {
+            on_gun_root
+                .then(|| gun_skel.bone_names.first().map(|root| (1, root.as_str())))
+                .flatten()
+        };
+        let joint = if on_gun_root {
+            gun_root()
+        } else if root_on_gun {
             on_gun()
         } else {
             on_attachment.or_else(on_gun)

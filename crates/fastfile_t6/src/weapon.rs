@@ -1,0 +1,476 @@
+//! Typed reads of a loaded `WeaponVariantDef` and the `WeaponDef` it points
+//! to. Offsets are the T6 PC layout (`WeaponVariantDef` 716 bytes,
+//! `WeaponDef` 2448 bytes).
+
+use crate::walk::{LoadedAsset, Ptr, ZoneLoad};
+
+pub mod variant {
+    pub const INTERNAL_NAME: u32 = 0;
+    pub const WEAP_DEF: u32 = 8;
+    pub const DISPLAY_NAME: u32 = 12;
+    pub const ALT_WEAPON_NAME: u32 = 16;
+    /// `const char** szXAnims`, [`XANIM_COUNT`] names indexed by
+    /// [`super::weap_anim`].
+    pub const XANIMS: u32 = 32;
+    pub const XANIM_COUNT: u32 = 88;
+    /// `XModel** attachViewModel` and `attachWorldModel`: the models
+    /// attached to the gun, [`ATTACH_MODEL_COUNT`] slots (slot 0 the
+    /// optic, 6 the magazine).
+    pub const ATTACH_VIEW_MODEL: u32 = 40;
+    pub const ATTACH_WORLD_MODEL: u32 = 44;
+    /// `float attachViewModelOffsets[24]` … `attachWorldModelRotations[24]`:
+    /// each slot's placement on the gun's root bone, an offset and
+    /// `(pitch, yaw, roll)` degrees.
+    pub const ATTACH_VIEW_MODEL_OFFSETS: u32 = 56;
+    pub const ATTACH_WORLD_MODEL_OFFSETS: u32 = 152;
+    pub const ATTACH_VIEW_MODEL_ROTATIONS: u32 = 248;
+    pub const ATTACH_WORLD_MODEL_ROTATIONS: u32 = 344;
+    pub const ATTACH_MODEL_COUNT: u32 = 8;
+    pub const CLIP_SIZE: u32 = 476;
+    pub const RELOAD_TIME: u32 = 480;
+    pub const RELOAD_EMPTY_TIME: u32 = 484;
+    pub const RELOAD_QUICK_TIME: u32 = 488;
+    pub const RELOAD_QUICK_EMPTY_TIME: u32 = 492;
+    pub const ADS_TRANS_IN_TIME: u32 = 496;
+    pub const ADS_TRANS_OUT_TIME: u32 = 500;
+    pub const ALT_RAISE_TIME: u32 = 504;
+    pub const ADS_VIEW_KICK_CENTER_SPEED: u32 = 540;
+    pub const HIP_VIEW_KICK_CENTER_SPEED: u32 = 544;
+    pub const ADS_ZOOM_FOV1: u32 = 548;
+    pub const ADS_ZOOM_IN_FRAC: u32 = 560;
+    pub const ADS_ZOOM_OUT_FRAC: u32 = 564;
+    pub const SILENCED: u32 = 580;
+    pub const DUAL_MAG: u32 = 581;
+    pub const SIZE: usize = 716;
+}
+
+pub mod def {
+    pub const GUN_XMODEL: u32 = 4;
+    pub const HAND_XMODEL: u32 = 8;
+    pub const PLAYER_ANIM_TYPE: u32 = 24;
+    pub const WEAP_TYPE: u32 = 28;
+    pub const WEAP_CLASS: u32 = 32;
+    pub const PENETRATE_TYPE: u32 = 36;
+    pub const IMPACT_TYPE: u32 = 40;
+    pub const INVENTORY_TYPE: u32 = 44;
+    pub const FIRE_TYPE: u32 = 48;
+    pub const OFFHAND_CLASS: u32 = 96;
+    pub const OFFHAND_SLOT: u32 = 100;
+    pub const PULLBACK_SOUND: u32 = 168;
+    pub const PULLBACK_SOUND_PLAYER: u32 = 172;
+    pub const FIRE_SOUND: u32 = 176;
+    pub const FIRE_SOUND_PLAYER: u32 = 180;
+    pub const FIRE_LAST_SOUND: u32 = 224;
+    pub const FIRE_LAST_SOUND_PLAYER: u32 = 228;
+    pub const EMPTY_FIRE_SOUND: u32 = 232;
+    pub const EMPTY_FIRE_SOUND_PLAYER: u32 = 236;
+    pub const MELEE_SWIPE_SOUND: u32 = 248;
+    pub const MELEE_SWIPE_SOUND_PLAYER: u32 = 252;
+    pub const MELEE_HIT_SOUND: u32 = 256;
+    pub const MELEE_MISS_SOUND: u32 = 260;
+    pub const RAISE_SOUND: u32 = 384;
+    pub const RAISE_SOUND_PLAYER: u32 = 388;
+    pub const FIRST_RAISE_SOUND: u32 = 392;
+    pub const FIRST_RAISE_SOUND_PLAYER: u32 = 396;
+    pub const PUTAWAY_SOUND: u32 = 408;
+    pub const PUTAWAY_SOUND_PLAYER: u32 = 412;
+    pub const PROJ_EXPLOSION_SOUND: u32 = 1820;
+    pub const WORLD_MODEL: u32 = 916;
+    pub const ROCKET_MODEL: u32 = 924;
+    pub const HUD_ICON: u32 = 940;
+    pub const AMMO_COUNTER_CLIP: u32 = 964;
+    pub const START_AMMO: u32 = 968;
+    pub const MAX_AMMO: u32 = 972;
+    pub const SHOT_COUNT: u32 = 976;
+    pub const AMMO_COUNT_CLIP_RELATIVE: u32 = 993;
+    /// `int damage[6]` and `float damageRange[6]`: a falloff curve from
+    /// point blank (index 0) outwards.
+    pub const DAMAGE: u32 = 996;
+    pub const DAMAGE_RANGE: u32 = 1020;
+    pub const DAMAGE_STEPS: usize = 6;
+    pub const MIN_PLAYER_DAMAGE: u32 = 1044;
+    pub const PLAYER_DAMAGE: u32 = 1056;
+    pub const MELEE_DAMAGE: u32 = 1060;
+    pub const FIRE_DELAY: u32 = 1072;
+    pub const MELEE_DELAY: u32 = 1076;
+    pub const MELEE_CHARGE_DELAY: u32 = 1080;
+    pub const FIRE_TIME: u32 = 1128;
+    pub const LAST_FIRE_TIME: u32 = 1132;
+    pub const RECHAMBER_TIME: u32 = 1136;
+    pub const RECHAMBER_BOLT_TIME: u32 = 1140;
+    pub const HOLD_FIRE_TIME: u32 = 1144;
+    pub const MELEE_TIME: u32 = 1152;
+    pub const BURST_DELAY_TIME: u32 = 1156;
+    pub const MELEE_CHARGE_TIME: u32 = 1160;
+    pub const RELOAD_SHOW_ROCKET_TIME: u32 = 1172;
+    pub const RELOAD_ADD_TIME: u32 = 1180;
+    pub const RELOAD_EMPTY_ADD_TIME: u32 = 1184;
+    pub const RELOAD_QUICK_ADD_TIME: u32 = 1188;
+    pub const RELOAD_QUICK_EMPTY_ADD_TIME: u32 = 1192;
+    pub const RELOAD_START_TIME: u32 = 1196;
+    pub const RELOAD_START_ADD_TIME: u32 = 1200;
+    pub const RELOAD_END_TIME: u32 = 1204;
+    pub const DROP_TIME: u32 = 1208;
+    pub const RAISE_TIME: u32 = 1212;
+    pub const ALT_DROP_TIME: u32 = 1216;
+    pub const QUICK_DROP_TIME: u32 = 1220;
+    pub const QUICK_RAISE_TIME: u32 = 1224;
+    pub const FIRST_RAISE_TIME: u32 = 1228;
+    pub const FUSE_TIME: u32 = 1356;
+    pub const NO_ADS_WHEN_MAG_EMPTY: u32 = 1373;
+    pub const MOVE_SPEED_SCALE: u32 = 1416;
+    pub const ADS_MOVE_SPEED_SCALE: u32 = 1420;
+    pub const OVERLAY_RETICLE: u32 = 1428;
+    pub const OVERLAY_INTERFACE: u32 = 1432;
+    pub const OVERLAY_WIDTH: u32 = 1436;
+    pub const OVERLAY_HEIGHT: u32 = 1440;
+    /// `fHipSpreadStandMin` … `fHipSpreadProneDecay`: eleven floats in the
+    /// IW order (stand/ducked/prone min, the three max, decay, fire, turn,
+    /// move, ducked decay, prone decay).
+    pub const HIP_SPREAD_STAND_MIN: u32 = 1456;
+    pub const HIP_RETICLE_SIDE_POS: u32 = 1504;
+    pub const ADS_IDLE_AMOUNT: u32 = 1508;
+    pub const HIP_IDLE_AMOUNT: u32 = 1512;
+    pub const ADS_IDLE_SPEED: u32 = 1516;
+    pub const HIP_IDLE_SPEED: u32 = 1520;
+    pub const IDLE_CROUCH_FACTOR: u32 = 1524;
+    pub const IDLE_PRONE_FACTOR: u32 = 1528;
+    pub const GUN_MAX_PITCH: u32 = 1532;
+    pub const GUN_MAX_YAW: u32 = 1536;
+    pub const BOLT_ACTION: u32 = 1588;
+    pub const AIM_DOWN_SIGHT: u32 = 1592;
+    pub const RECHAMBER_WHILE_ADS: u32 = 1593;
+    pub const COOK_OFF_HOLD: u32 = 1604;
+    pub const ADS_FIRE_ONLY: u32 = 1608;
+    pub const DUAL_WIELD: u32 = 1615;
+    pub const RETRIEVABLE: u32 = 1618;
+    pub const KILL_ICON: u32 = 1632;
+    pub const KILL_ICON_RATIO: u32 = 1636;
+    pub const FLIP_KILL_ICON: u32 = 1640;
+    pub const NO_PARTIAL_RELOAD: u32 = 1641;
+    pub const SEGMENTED_RELOAD: u32 = 1642;
+    pub const RELOAD_AMMO_ADD: u32 = 1644;
+    pub const RELOAD_START_ADD: u32 = 1648;
+    pub const IS_TACTICAL_INSERTION: u32 = 1700;
+    pub const EXPLOSION_RADIUS: u32 = 1708;
+    pub const EXPLOSION_RADIUS_MIN: u32 = 1712;
+    pub const EXPLOSION_INNER_DAMAGE: u32 = 1720;
+    pub const EXPLOSION_OUTER_DAMAGE: u32 = 1724;
+    pub const PROJECTILE_SPEED: u32 = 1732;
+    pub const PROJECTILE_SPEED_UP: u32 = 1736;
+    pub const PROJECTILE_ACTIVATE_DIST: u32 = 1752;
+    pub const PROJECTILE_MODEL: u32 = 1768;
+    pub const PROJ_EXPLOSION: u32 = 1772;
+    pub const PROJ_IMPACT_EXPLODE: u32 = 1836;
+    pub const STICKINESS: u32 = 1840;
+    pub const PLANTABLE: u32 = 1848;
+    pub const HAS_DETONATOR: u32 = 1849;
+    pub const TIMED_DETONATION: u32 = 1850;
+    pub const HOLD_BUTTON_TO_THROW: u32 = 1854;
+    pub const OFFHAND_HOLD_IS_CANCELABLE: u32 = 1855;
+    pub const USE_AS_MELEE: u32 = 1872;
+    /// `float*` to one coefficient per surface type (`SURF_TYPE_NUM` = 32).
+    pub const PARALLEL_BOUNCE: u32 = 1880;
+    pub const PERPENDICULAR_BOUNCE: u32 = 1884;
+    pub const SURF_TYPE_COUNT: usize = 32;
+    pub const ADS_GUN_KICK_REDUCED_KICK_BULLETS: u32 = 1936;
+    /// `adsGunKickReducedKickPercent` then the ADS kick/scatter/spread floats
+    /// through `fAdsSpread`; the hip block starts at `HIP_GUN_KICK_…`.
+    pub const ADS_GUN_KICK_REDUCED_KICK_PERCENT: u32 = 1940;
+    pub const ADS_GUN_KICK_PITCH_MIN: u32 = 1944;
+    pub const ADS_GUN_KICK_PITCH_MAX: u32 = 1948;
+    pub const ADS_GUN_KICK_YAW_MIN: u32 = 1952;
+    pub const ADS_GUN_KICK_YAW_MAX: u32 = 1956;
+    pub const ADS_GUN_KICK_ACCEL: u32 = 1960;
+    pub const ADS_GUN_KICK_SPEED_MAX: u32 = 1964;
+    pub const ADS_GUN_KICK_SPEED_DECAY: u32 = 1968;
+    pub const ADS_GUN_KICK_STATIC_DECAY: u32 = 1972;
+    pub const ADS_VIEW_KICK_PITCH_MIN: u32 = 1976;
+    pub const ADS_VIEW_KICK_PITCH_MAX: u32 = 1980;
+    pub const ADS_VIEW_KICK_YAW_MIN: u32 = 1988;
+    pub const ADS_VIEW_KICK_YAW_MAX: u32 = 1992;
+    pub const ADS_VIEW_SCATTER_MIN: u32 = 2008;
+    pub const ADS_VIEW_SCATTER_MAX: u32 = 2012;
+    pub const ADS_SPREAD: u32 = 2016;
+    pub const HIP_GUN_KICK_REDUCED_KICK_BULLETS: u32 = 2020;
+    pub const HIP_GUN_KICK_REDUCED_KICK_PERCENT: u32 = 2024;
+    pub const HIP_GUN_KICK_PITCH_MIN: u32 = 2028;
+    pub const HIP_GUN_KICK_PITCH_MAX: u32 = 2032;
+    pub const HIP_GUN_KICK_YAW_MIN: u32 = 2036;
+    pub const HIP_GUN_KICK_YAW_MAX: u32 = 2040;
+    pub const HIP_GUN_KICK_ACCEL: u32 = 2044;
+    pub const HIP_GUN_KICK_SPEED_MAX: u32 = 2048;
+    pub const HIP_GUN_KICK_SPEED_DECAY: u32 = 2052;
+    pub const HIP_GUN_KICK_STATIC_DECAY: u32 = 2056;
+    pub const HIP_VIEW_KICK_PITCH_MIN: u32 = 2060;
+    pub const HIP_VIEW_KICK_PITCH_MAX: u32 = 2064;
+    pub const HIP_VIEW_KICK_YAW_MIN: u32 = 2072;
+    pub const HIP_VIEW_KICK_YAW_MAX: u32 = 2076;
+    pub const HIP_VIEW_SCATTER_MIN: u32 = 2080;
+    pub const HIP_VIEW_SCATTER_MAX: u32 = 2084;
+    pub const LOCATION_DAMAGE_MULTIPLIERS: u32 = 2300;
+    pub const TRACER_TYPE: u32 = 2320;
+    pub const SIZE: usize = 2448;
+}
+
+/// `weapAnimFiles_t`: the slots of `szXAnims` this crate's users read. T6
+/// keeps T5's order with fire-intro, final-shot and melee variants inserted
+/// (T5 + 7 from `RELOAD` through `SPRINT_OUT`), then sprint-empty, crawl,
+/// dive-to-prone and other slots before the ADS block.
+pub mod weap_anim {
+    pub const IDLE: usize = 1;
+    pub const EMPTY_IDLE: usize = 2;
+    pub const FIRE_INTRO: usize = 3;
+    pub const FIRE: usize = 4;
+    pub const HOLD_FIRE: usize = 5;
+    pub const LASTSHOT: usize = 6;
+    pub const RECHAMBER: usize = 8;
+    pub const MELEE: usize = 9;
+    pub const MELEE_CHARGE: usize = 14;
+    pub const RELOAD: usize = 16;
+    pub const RELOAD_EMPTY: usize = 18;
+    pub const RELOAD_START: usize = 19;
+    pub const RELOAD_END: usize = 20;
+    pub const RELOAD_QUICK: usize = 21;
+    pub const RELOAD_QUICK_EMPTY: usize = 22;
+    pub const RAISE: usize = 23;
+    pub const FIRST_RAISE: usize = 24;
+    pub const DROP: usize = 25;
+    pub const ALT_RAISE: usize = 26;
+    pub const ALT_DROP: usize = 27;
+    pub const QUICK_RAISE: usize = 28;
+    pub const QUICK_DROP: usize = 29;
+    pub const EMPTY_RAISE: usize = 30;
+    pub const EMPTY_DROP: usize = 31;
+    pub const SPRINT_IN: usize = 32;
+    pub const SPRINT_LOOP: usize = 33;
+    pub const SPRINT_OUT: usize = 34;
+    pub const DETONATE: usize = 58;
+    pub const ADS_FIRE: usize = 61;
+    pub const ADS_LASTSHOT: usize = 62;
+    pub const ADS_RECHAMBER: usize = 64;
+    /// The left hand of a dual-wield pair (`*_lh_mp`), layered over the
+    /// right hand's clips on the same viewmodel.
+    pub const DW_LEFT_FIRE: usize = 78;
+    pub const DW_LEFT_LASTSHOT: usize = 79;
+    pub const DW_LEFT_IDLE: usize = 81;
+    pub const DW_LEFT_EMPTY_IDLE: usize = 82;
+    pub const DW_LEFT_RELOAD_EMPTY: usize = 83;
+    pub const DW_LEFT_RELOAD: usize = 84;
+    pub const ADS_UP: usize = 85;
+    pub const ADS_DOWN: usize = 86;
+}
+
+/// `weapType_t`.
+pub mod weap_type {
+    pub const BULLET: i32 = 0;
+    pub const GRENADE: i32 = 1;
+    pub const PROJECTILE: i32 = 2;
+    pub const BINOCULARS: i32 = 3;
+    pub const GAS: i32 = 4;
+    pub const BOMB: i32 = 5;
+    pub const MINE: i32 = 6;
+    pub const MELEE: i32 = 7;
+    pub const RIOTSHIELD: i32 = 8;
+}
+
+/// `weapClass_t`.
+pub mod weap_class {
+    pub const RIFLE: i32 = 0;
+    pub const MG: i32 = 1;
+    pub const SMG: i32 = 2;
+    pub const SPREAD: i32 = 3;
+    pub const PISTOL: i32 = 4;
+    pub const GRENADE: i32 = 5;
+    pub const ROCKETLAUNCHER: i32 = 6;
+    pub const TURRET: i32 = 7;
+    pub const NON_PLAYER: i32 = 8;
+    pub const GAS: i32 = 9;
+    pub const ITEM: i32 = 10;
+    pub const MELEE: i32 = 11;
+    pub const KILLSTREAK_ALT_STORED_WEAPON: i32 = 12;
+    pub const PISTOL_SPREAD: i32 = 13;
+}
+
+/// `weapInventoryType_t`.
+pub mod inventory_type {
+    pub const PRIMARY: i32 = 0;
+    pub const OFFHAND: i32 = 1;
+    pub const ITEM: i32 = 2;
+    pub const ALTMODE: i32 = 3;
+    pub const MELEE: i32 = 4;
+    pub const DWLEFTHAND: i32 = 5;
+}
+
+/// `OffhandSlot`.
+pub mod offhand_slot {
+    pub const NONE: i32 = 0;
+    pub const LETHAL_GRENADE: i32 = 1;
+    pub const TACTICAL_GRENADE: i32 = 2;
+    pub const EQUIPMENT: i32 = 3;
+    pub const SPECIFIC_USE: i32 = 4;
+}
+
+/// A weapon asset of a finished zone load.
+#[derive(Clone, Copy)]
+pub struct WeaponView<'z> {
+    load: &'z ZoneLoad,
+    variant: &'z [u8],
+    def: Option<Ptr>,
+}
+
+impl<'z> WeaponView<'z> {
+    pub fn new(load: &'z ZoneLoad, asset: &'z LoadedAsset) -> Option<Self> {
+        if asset.header.len() < variant::SIZE {
+            return None;
+        }
+        let mut view = Self {
+            load,
+            variant: &asset.header,
+            def: None,
+        };
+        view.def = view.variant_ptr(variant::WEAP_DEF);
+        Some(view)
+    }
+
+    fn variant_u32(&self, off: u32) -> u32 {
+        let o = off as usize;
+        u32::from_le_bytes(self.variant[o..o + 4].try_into().unwrap())
+    }
+
+    fn variant_ptr(&self, off: u32) -> Option<Ptr> {
+        crate::walk::decode_ptr(self.variant_u32(off))
+    }
+
+    pub fn has_def(&self) -> bool {
+        self.def.is_some()
+    }
+
+    pub fn variant_i32(&self, off: u32) -> i32 {
+        self.variant_u32(off) as i32
+    }
+
+    pub fn variant_f32(&self, off: u32) -> f32 {
+        f32::from_bits(self.variant_u32(off))
+    }
+
+    pub fn variant_bool(&self, off: u32) -> bool {
+        self.variant[off as usize] != 0
+    }
+
+    pub fn variant_str(&self, off: u32) -> Option<&'z str> {
+        let p = self.variant_ptr(off)?;
+        self.load
+            .blocks
+            .cstr(p)
+            .ok()
+            .and_then(|b| core::str::from_utf8(b).ok())
+    }
+
+    fn def_bytes(&self, off: u32, len: usize) -> Option<&'z [u8]> {
+        self.load.blocks.bytes(self.def?.at(off), len).ok()
+    }
+
+    pub fn def_i32(&self, off: u32) -> i32 {
+        self.def_bytes(off, 4)
+            .map_or(0, |b| i32::from_le_bytes(b.try_into().unwrap()))
+    }
+
+    pub fn def_f32(&self, off: u32) -> f32 {
+        self.def_bytes(off, 4)
+            .map_or(0.0, |b| f32::from_le_bytes(b.try_into().unwrap()))
+    }
+
+    pub fn def_bool(&self, off: u32) -> bool {
+        self.def_bytes(off, 1).is_some_and(|b| b[0] != 0)
+    }
+
+    pub fn def_str(&self, off: u32) -> Option<&'z str> {
+        let p = self.load.blocks.ptr_at(self.def?.at(off)).ok()??;
+        self.load
+            .blocks
+            .cstr(p)
+            .ok()
+            .and_then(|b| core::str::from_utf8(b).ok())
+    }
+
+    /// `N` floats behind a `WeaponDef` `float*` field; `None` when null.
+    pub fn def_f32_array<const N: usize>(&self, off: u32) -> Option<[f32; N]> {
+        let p = self.load.blocks.ptr_at(self.def?.at(off)).ok()??;
+        let bytes = self.load.blocks.bytes(p, 4 * N).ok()?;
+        Some(core::array::from_fn(|i| {
+            f32::from_le_bytes(bytes[4 * i..4 * i + 4].try_into().unwrap())
+        }))
+    }
+
+    pub fn name(&self) -> Option<&'z str> {
+        self.variant_str(variant::INTERNAL_NAME)
+    }
+
+    /// The name of the asset a `WeaponDef` pointer field refers to (an
+    /// `XModel*`, `Material*`, …), read from that asset's header.
+    pub fn def_asset_name(&self, off: u32) -> Option<&'z str> {
+        asset_name(self.load, self.def?.at(off))
+    }
+
+    /// Entry `index` of a `WeaponDef` pointer array such as `gunXModel`.
+    pub fn def_asset_array_name(&self, off: u32, index: u32) -> Option<&'z str> {
+        let arr = self.load.blocks.ptr_at(self.def?.at(off)).ok()??;
+        asset_name(self.load, arr.at(4 * index))
+    }
+
+    /// The model attached in `slot`, first-person or world, and its
+    /// placement on the gun's root bone: an offset and `(pitch, yaw, roll)`
+    /// degrees.
+    pub fn attached_model(&self, slot: u32, view: bool) -> Option<(&'z str, [f32; 3], [f32; 3])> {
+        use variant as v;
+        let (models, offsets, rotations) = if view {
+            (v::ATTACH_VIEW_MODEL, v::ATTACH_VIEW_MODEL_OFFSETS, v::ATTACH_VIEW_MODEL_ROTATIONS)
+        } else {
+            (v::ATTACH_WORLD_MODEL, v::ATTACH_WORLD_MODEL_OFFSETS, v::ATTACH_WORLD_MODEL_ROTATIONS)
+        };
+        if slot >= v::ATTACH_MODEL_COUNT {
+            return None;
+        }
+        let name = asset_name(self.load, self.variant_ptr(models)?.at(4 * slot))?;
+        let vec3 = |base: u32| core::array::from_fn(|k| self.variant_f32(base + 12 * slot + 4 * k as u32));
+        Some((name, vec3(offsets), vec3(rotations)))
+    }
+
+    /// Entry `index` of `szXAnims`.
+    pub fn xanim(&self, index: u32) -> Option<&'z str> {
+        let arr = self.variant_ptr(variant::XANIMS)?;
+        let p = self.load.blocks.ptr_at(arr.at(4 * index)).ok()??;
+        self.load
+            .blocks
+            .cstr(p)
+            .ok()
+            .and_then(|b| core::str::from_utf8(b).ok())
+    }
+
+    pub fn damage_curve(&self) -> [(i32, f32); def::DAMAGE_STEPS] {
+        core::array::from_fn(|i| {
+            (
+                self.def_i32(def::DAMAGE + 4 * i as u32),
+                self.def_f32(def::DAMAGE_RANGE + 4 * i as u32),
+            )
+        })
+    }
+}
+
+/// The name of the asset whose pointer is stored at `slot`: every asset
+/// header starts with its name except images, which keep it at 72.
+pub fn asset_name(load: &ZoneLoad, slot: Ptr) -> Option<&str> {
+    let asset = load.asset_at(slot)?;
+    let off = if asset.ty == crate::AssetType::Image {
+        72
+    } else {
+        0
+    };
+    let raw = u32::from_le_bytes(asset.header.get(off..off + 4)?.try_into().ok()?);
+    let p = crate::walk::decode_ptr(raw)?;
+    load.blocks
+        .cstr(p)
+        .ok()
+        .and_then(|b| core::str::from_utf8(b).ok())
+}
