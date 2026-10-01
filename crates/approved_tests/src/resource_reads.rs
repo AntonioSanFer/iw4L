@@ -45,7 +45,10 @@ fn write_entry(
 ) {
     let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
     writer
-        .start_file(name, SimpleFileOptions::default().compression_method(method))
+        .start_file(
+            name,
+            SimpleFileOptions::default().compression_method(method),
+        )
         .unwrap();
     writer.write_all(payload).unwrap();
     let mut bytes = writer.finish().unwrap().into_inner();
@@ -99,7 +102,10 @@ fn iwd_payload_length_is_checked_for_images_sounds_and_named_reads() {
             if declared == 4 {
                 assert_eq!(image.read().unwrap(), b"1234");
                 assert_eq!(sound.read_sound("PROBE.WAV").unwrap().unwrap(), b"1234");
-                assert_eq!(read_iwd_named(&dir.0, "IMAGES\\probe.iwi").unwrap(), b"1234");
+                assert_eq!(
+                    read_iwd_named(&dir.0, "IMAGES\\probe.iwi").unwrap(),
+                    b"1234"
+                );
             } else {
                 assert!(image.read().unwrap_err().contains("length mismatch"));
                 assert!(
@@ -150,7 +156,12 @@ fn iwd_header_prefix_requires_its_bytes_and_checks_crc_at_entry_end() {
     let short = &index.image_candidates("short").unwrap()[0];
     assert_eq!(short.read_header(2).unwrap(), b"12");
     for limit in [6, 8, 32] {
-        assert!(short.read_header(limit).unwrap_err().contains("length mismatch"));
+        assert!(
+            short
+                .read_header(limit)
+                .unwrap_err()
+                .contains("length mismatch")
+        );
     }
     let crc = &index.image_candidates("crc").unwrap()[0];
     assert_eq!(crc.read_header(2).unwrap(), b"12");
