@@ -533,6 +533,13 @@ pub(crate) fn native_menu_settings(
                 }
             }
             "ui_player_name" => settings.player_name = value.clone(),
+            "ui_sensitivity" => {
+                if let Ok(v) = value.parse::<f32>()
+                    && v.is_finite()
+                {
+                    settings.sensitivity = v;
+                }
+            }
             "ui_fov" => {
                 if let Ok(v) = value.parse::<f32>() {
                     settings.fov = v;
@@ -582,6 +589,7 @@ pub(crate) fn native_menu_settings(
     dvars.set("ui_volume", settings.master_volume.to_string());
     dvars.set("ui_brightness", settings.brightness.to_string());
     dvars.set("ui_fov", settings.fov.to_string());
+    dvars.set("ui_sensitivity", settings.sensitivity.to_string());
     dvars.set("ui_player_name", settings.player_name.clone());
     dvars.set("ui_shadows", if settings.shadows { "1" } else { "0" });
     dvars.set("ui_dof", if settings.depth_of_field { "1" } else { "0" });
