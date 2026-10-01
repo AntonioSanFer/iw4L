@@ -12,10 +12,10 @@ fn main() {
     });
     let artifacts = ensure_artifacts_dir().unwrap_or_else(|e| diag::exit_launch_error(&e));
     announce_log(diag::init_log(&artifacts));
-    let (mode, acceptance) = bootstrap::parse_cli(std::env::args().skip(1))
+    let (mode, acceptance, cheats) = bootstrap::parse_cli(std::env::args().skip(1))
         .unwrap_or_else(|e| diag::exit_launch_error(&e));
     let games = games_root_from_env().unwrap_or_else(|e| diag::exit_launch_error(&e));
-    bootstrap::launch(games, artifacts, mode, acceptance);
+    bootstrap::launch(games, artifacts, mode, acceptance, cheats);
 }
 
 fn prepare_process_root() -> Result<(), String> {

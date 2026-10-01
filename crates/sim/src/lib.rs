@@ -121,9 +121,9 @@ pub use sound_alias_cs::{
     hud_string_in_occupied, name_in_occupied,
 };
 pub use spawn::{
-    AuthoredSpawnPoint, HostGameModeSelection, MatchBootstrap, SPAWN_BAD_DIST, SPAWN_IDEAL_DIST,
-    SpawnAttemptReport, SpawnDecision, SpawnReject, host_game_mode_kind, pick_ffa_spawn,
-    spawn_candidate_indices, spawn_candidate_indices_for,
+    AuthoredSpawnPoint, HostCheats, HostGameModeSelection, MatchBootstrap, SPAWN_BAD_DIST,
+    SPAWN_IDEAL_DIST, SpawnAttemptReport, SpawnDecision, SpawnReject, host_game_mode_kind,
+    pick_ffa_spawn, spawn_candidate_indices, spawn_candidate_indices_for,
 };
 pub use step::phase_materialize_entity_dobjs;
 pub use world::{

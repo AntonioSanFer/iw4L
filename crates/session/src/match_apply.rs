@@ -66,6 +66,7 @@ pub struct MatchInstallAuthority<'w> {
     role: Res<'w, frame::RuntimeRole>,
     prediction: Option<Res<'w, net::ClientPredictionState>>,
     input_gate: Res<'w, AuthorityInputGate>,
+    cheats: Option<Res<'w, sim::HostCheats>>,
 }
 
 #[derive(SystemParam)]
@@ -107,7 +108,9 @@ pub fn apply_prepared_match(
         role,
         prediction,
         input_gate,
+        cheats,
     } = authority;
+    let allow_debug_actions = cheats.is_some_and(|cheats| cheats.0);
     let MatchInstallPresentation {
         mut probe,
         camera: sim_cam,
@@ -470,6 +473,7 @@ pub fn apply_prepared_match(
             &mut input_gate,
             host_classes.as_deref(),
             kind,
+            allow_debug_actions,
         )?;
         let script_facts = script_install_facts(&zone, gametype, &scripts, script_entries.len());
         sim.install_gsc_program(
@@ -1399,6 +1403,7 @@ fn install_clip_and_player(
     input_gate: &mut AuthorityInputGate,
     host_classes: Option<&HostClassLoadouts>,
     kind: gamemode_iw4::GameModeKind,
+    allow_debug_actions: bool,
 ) -> Result<(&'static str, Vec<Option<String>>), InstallRefusal> {
     let clip = clip.ok_or_else(|| InstallRefusal::new("Required collision geometry is missing"))?;
     let static_models = &clip.static_models;
@@ -1572,7 +1577,7 @@ fn install_clip_and_player(
             gamemode_iw4::GameModeKind::Demolition => gamemode_iw4::dd::TIME_LIMIT_MS,
             _ => sim::FFA.time_limit_ms,
         },
-        allow_debug_actions: true,
+        allow_debug_actions,
         intermission_view,
         airstrike_height,
         ..Default::default()

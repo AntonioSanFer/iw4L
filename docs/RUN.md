@@ -6,7 +6,7 @@ Two players through the master: [`make duo`](DUO.md).
 ```bash
 set -a; . ./.env; set +a          # IW4L_GAMES; DISPLAY=:0 if the session has none
 make map mp_boneyard CMDS='spawn 0; wait 2s; quit'
-cargo run --profile play -p launcher -- map iw5:mp_overwatch --cmds '…'
+cargo run --profile play -p launcher -- --cheats map iw5:mp_overwatch --cmds '…'
 ```
 
 `make` passes no foreign flags through: in the `Makefile` it is `CMDS`, on the
@@ -14,6 +14,13 @@ binary `--cmds`. The colon is a GNU make pattern, so `make map iw5:…` fails �
 write `make map ZONE=iw5:mp_overwatch` or use `cargo run`. Recipes: `make
 scenario`, `chaos`, `bench` ([`BENCH.md`](BENCH.md)), `bench-live`, `lifecycle-*`
 (`*_CMDS` in the `Makefile`). Live recipes use `[profile.play]`; LTO is `PROFILE=release`.
+
+**Cheats come from the launch.** `--cheats` lets the host accept the debug
+actions: `move`, `look`, `tp`, `nudge`, `kill`, `damage`, `force_spawn`,
+`force_match_start`, `rotatevelocity` and the `give` supply commands. The switch
+applies to `map`, `serve` and `menu`. Without it the host refuses these actions,
+and a listen host echoes `cheats are off`. `make map` and the live recipes pass
+`--cheats`; `make menu` and master matches do not.
 
 **GSC controls the start freeze.** `freezecontrols` constrains authority movement;
 snapshots carry the same constraints into client prediction and command replay.
