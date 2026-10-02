@@ -322,6 +322,13 @@ fn adopt_fired(world: &mut World) {
             }
         };
         let weapon = super::players::script_weapon(world, projectile.owner.0, projectile.weapon);
+        super::players::note_insertion_throw(
+            world,
+            projectile.owner.0,
+            weapon,
+            projectile.weapon,
+            object,
+        );
         let name = weapon_name(world, weapon);
         raise(world, player, notify, vec![Value::Object(object), name]);
     }

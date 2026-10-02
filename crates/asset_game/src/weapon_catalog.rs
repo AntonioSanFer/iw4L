@@ -444,6 +444,9 @@ pub enum CacOffhandBucket {
     Tactical,
 }
 
+/// IW4's `smoke` offhand class, thrown with the tactical button.
+const OFFHAND_CLASS_SMOKE: i32 = 2;
+
 pub fn cac_offhand_bucket(offhand_class: i32) -> Option<CacOffhandBucket> {
     match offhand_class {
         1 | 4 | 5 => Some(CacOffhandBucket::Lethal),
@@ -2474,7 +2477,8 @@ impl WeaponCatalog {
                 .map(t6_model_name),
             projectile_model: weapon
                 .def_asset_name(fastfile_t6::weapon::def::PROJECTILE_MODEL)
-                .map(t6_model_name),
+                .map(t6_model_name)
+                .or_else(|| crate::weapon_t6::planted_model(name).map(str::to_owned)),
             rocket_model: None,
             sz_xanims: t6_sz_xanims(weapon),
             // Paired by name when the rows are dressed (`X_dw` with `X_lh`).
@@ -6579,6 +6583,11 @@ impl WeaponBuild {
             // `sticky_grenade_mp` "frag").
             if facts.offhand_class != 0 && stand_in_facts.offhand_class != 0 {
                 facts.offhand_class = stand_in_facts.offhand_class;
+            }
+            // T6 tactical equipment throws with the tactical button whatever
+            // its stand-in is (IW4's tactical insertion is equipment).
+            if crate::weapon_t6::is_tactical_equipment(&own.name) {
+                facts.offhand_class = OFFHAND_CLASS_SMOKE;
             }
             // A T6 riot shield bashes with the fire button.
             facts.fire_melees = facts.weap_type == weapon_iw4::WEAPTYPE_SHIELD;

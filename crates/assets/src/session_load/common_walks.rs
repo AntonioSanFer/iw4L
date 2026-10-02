@@ -983,7 +983,16 @@ pub(super) fn bind_t6_content(
                 } else if model.view {
                     &fpv.get(Iw4, weapons.gun_xmodel_of(id)?)?.material_keys
                 } else {
-                    &world.get(Iw4, weapons.world_model_of(id)?)?.material_keys
+                    // A stand-in with no world model of its own (IW4's
+                    // tactical insertion is planted by script) lends its
+                    // first-person model's.
+                    match weapons
+                        .world_model_of(id)
+                        .and_then(|name| world.get(Iw4, name))
+                    {
+                        Some(gun) => &gun.material_keys,
+                        None => &fpv.get(Iw4, weapons.gun_xmodel_of(id)?)?.material_keys,
+                    }
                 };
                 // The gun's (or arms') lit body: the material binding both a
                 // colour and a normal map, not a sight, glow or decal. The

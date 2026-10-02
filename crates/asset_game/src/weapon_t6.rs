@@ -70,6 +70,30 @@ const STAND_INS: &[(&str, &str)] = &[
     ("tactical_insertion", "flare_mp"),
 ];
 
+/// T6 tactical equipment whose stand-in is not a tactical grenade in IW4
+/// (`flare_mp` is IW4's tactical insertion, equipment there).
+const TACTICAL_EQUIPMENT: &[&str] = &["tactical_insertion"];
+
+/// Whether a T6 weapon is tactical equipment the IW4 stand-in's offhand
+/// class would file as lethal.
+pub fn is_tactical_equipment(name: &str) -> bool {
+    TACTICAL_EQUIPMENT.contains(&base_name(name))
+}
+
+/// T6 equipment whose scripts plant a model of their own, which its weapon
+/// does not name: it stands for the thrown one.
+const PLANTED_MODELS: &[(&str, &str)] = &[("tactical_insertion", "t6_wpn_tac_insert_world")];
+
+/// The model a T6 weapon's scripts plant it as, when its weapon does not
+/// name one.
+pub fn planted_model(name: &str) -> Option<&'static str> {
+    let base = base_name(name);
+    PLANTED_MODELS
+        .iter()
+        .find(|(t6, _)| *t6 == base)
+        .map(|(_, model)| *model)
+}
+
 /// The T6 weapon whose knife and swings every gun's melee borrows when
 /// the gun has no melee clip of its own (T6 rifles and snipers do not).
 pub const MELEE_WEAPON: &str = "knife_mp";

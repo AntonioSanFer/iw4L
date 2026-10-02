@@ -979,6 +979,7 @@ fn register_appearance(registry: &mut NativeRegistry) {
         let model = string(args, 0)?;
         let id = entity_id(world, receiver)?;
         runtime(world).set_object_field(id, "model", Value::string(&model));
+        crate::script::host::players::dress_insertion_glow(world, id, &model);
         Ok(Value::Undefined)
     });
     registry.register(

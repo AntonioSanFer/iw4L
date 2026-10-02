@@ -999,6 +999,7 @@ fn capture_content(
             (weapon.def_asset_array_name(def::GUN_XMODEL, 0), true),
             (weapon.def_asset_array_name(def::WORLD_MODEL, 0), false),
             (weapon.def_asset_name(def::PROJECTILE_MODEL), false),
+            (weapon.name().and_then(asset_game::t6_planted_model), false),
         ] {
             if let Some(name) = name {
                 wanted
