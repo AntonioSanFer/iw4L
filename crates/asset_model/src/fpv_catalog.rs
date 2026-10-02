@@ -566,6 +566,20 @@ pub struct FpvMountPlan {
     pub secondary_gun: Option<FpvMeshIndex>,
     pub attachments: Vec<FpvMount>,
     pub rocket: Option<FpvMount>,
+    /// Attachments drawn as another model while aiming: the index in
+    /// `attachments` and the model (a T6 optic's `viewModelADS`).
+    pub ads_swaps: Vec<(usize, FpvMeshIndex)>,
+}
+
+impl FpvMountPlan {
+    /// The attachment models drawn, while aiming (`ads`) or not.
+    pub fn attachment_models(&self, ads: bool) -> impl Iterator<Item = FpvMeshIndex> + '_ {
+        self.attachments.iter().enumerate().map(move |(at, mount)| {
+            ads.then(|| self.ads_swaps.iter().find(|(swap, _)| *swap == at))
+                .flatten()
+                .map_or(mount.model, |&(_, model)| model)
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -718,5 +732,6 @@ pub fn plan_fpv_mounts(
         secondary_gun: None,
         attachments: selected,
         rocket,
+        ads_swaps: Vec::new(),
     })
 }

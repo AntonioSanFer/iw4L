@@ -144,7 +144,7 @@ pub(crate) fn update(
             .ok_or_else(|| format!("weapon {weapon}: pickup/hud icon unresolved"))?;
         let namespace = weapons
             .0
-            .namespace_of(weapon)
+            .hud_icon_namespace_of(weapon)
             .ok_or_else(|| format!("weapon {weapon}: namespace missing"))?;
         Ok::<_, String>(Some((
             text,

@@ -2418,8 +2418,9 @@ impl WeaponCatalog {
             hud_material_edges: WeaponHudMaterialEdges::default(),
             reticle_center_slot: None,
             reticle_side_slot: None,
-            overlay_material: None,
-            overlay_image: None,
+            // T6 UI images are keyed by material name.
+            overlay_material: weapon.variant_asset_name(v::OVERLAY_MATERIAL).map(str::to_owned),
+            overlay_image: weapon.variant_asset_name(v::OVERLAY_MATERIAL).map(str::to_owned),
             overlay_material_slot: None,
             scope_name: None,
             scope_rows: Default::default(),
@@ -2439,7 +2440,9 @@ impl WeaponCatalog {
             iw5_anim_overrides: Vec::new(),
             iw5_fx_overrides: Vec::new(),
             iw5_notetrack_overrides: Vec::new(),
-            hud_icon: None,
+            hud_icon: weapon
+                .def_loaded_asset_name(fastfile_t6::weapon::def::HUD_ICON)
+                .map(t6_model_name),
             hud_icon_slot: None,
             pickup_icon: None,
             pickup_icon_slot: None,
@@ -3644,6 +3647,12 @@ pub struct T6Attachment {
     /// First-person and world models, named as their placed copies (see
     /// [`t6_attachment_models`]).
     pub models: [Vec<String>; 2],
+    /// The first-person main model's copy and the copy drawn instead while
+    /// aiming (a holographic sight or rangefinder seen from behind).
+    pub view_ads_model: Option<(String, String)>,
+    /// The scope overlay the weapon shows wearing it; none for a sight
+    /// looked through (an ACOG on a sniper rifle).
+    pub overlay: Option<String>,
     /// Gun bones the attachment hides (iron sights under an optic).
     pub hide_tags: Vec<String>,
     /// Clips the attachment plays instead of the weapon's, in IW4 slots.
@@ -3818,6 +3827,23 @@ pub fn t6_attachment_models(
         .collect()
 }
 
+/// The first-person model `unique` draws instead of its main one while
+/// aiming, copied for this weapon as the main one is.
+pub fn t6_attachment_ads_model(
+    unique: fastfile_t6::weapon::AttachmentUniqueView<'_>,
+) -> Option<T6AttachmentModel> {
+    let owner = unique.name()?;
+    let (model, tag, offset, angles) = unique.ads_model()?;
+    let model = t6_model_name(model);
+    Some(T6AttachmentModel {
+        copy: format!("{model}@{owner}"),
+        model,
+        tag: tag.map(str::to_owned),
+        offset,
+        angles,
+    })
+}
+
 fn capture_t6_attachment(unique: fastfile_t6::weapon::AttachmentUniqueView<'_>) -> Option<T6Attachment> {
     use fastfile_t6::weapon::unique as u;
     let name = unique.name()?.to_owned();
@@ -3831,6 +3857,12 @@ fn capture_t6_attachment(unique: fastfile_t6::weapon::AttachmentUniqueView<'_>) 
                 .map(|model| model.copy)
                 .collect()
         }),
+        view_ads_model: t6_attachment_models(unique, true)
+            .into_iter()
+            .next()
+            .zip(t6_attachment_ads_model(unique))
+            .map(|(main, ads)| (main.copy, ads.copy)),
+        overlay: unique.asset_field_name(u::OVERLAY_MATERIAL).map(str::to_owned),
         hide_tags: unique.hide_tags().map(str::to_owned).collect(),
         xanims: t6_sz_xanims_by(|slot| unique.xanim(slot)),
         fire_sound: unique.sound(u::FIRE_SOUND).map(str::to_owned),
@@ -5764,6 +5796,9 @@ struct WeaponRow {
 
     attachment_view_models: Vec<String>,
     attachment_world_models: Vec<String>,
+    /// First-person attachment models drawn instead of others while
+    /// aiming: `(model, while aiming)`.
+    attachment_view_ads_models: Vec<(String, String)>,
 
     /// See [`CatalogWeapon::t6_clip_models`] and
     /// [`CatalogWeapon::t6_attachments`].
@@ -5773,6 +5808,9 @@ struct WeaponRow {
 
     iw5_configuration: Option<(u32, Iw5AttachmentSelection)>,
     prepared_attachments: Vec<String>,
+    /// The attachment captions the HUD names the weapon with after its own
+    /// name (`MPUI_REFLEX`), for a T6 configuration.
+    attachment_caption_keys: Vec<String>,
 
     iw5_attachment_slots: [Option<String>; fastfile_iw5::size::WEAPON_ATTACHMENT_SLOT_COUNT],
     iw5_reload_overrides: Vec<fastfile_iw5::ReloadOverride>,
@@ -5794,6 +5832,9 @@ struct WeaponRow {
 
     hud_icon: Option<String>,
     hud_icon_from_slot: bool,
+    /// The HUD icon is the T6 row's own UI image, kept in its identity
+    /// namespace (see [`WeaponRegistry::hud_icon_namespace_of`]).
+    own_hud_icon: bool,
     pickup_icon: Option<String>,
     pickup_icon_image: Option<String>,
     pickup_icon_authored: bool,
@@ -5859,11 +5900,13 @@ impl Default for WeaponRow {
             hide_tags: Vec::new(),
             attachment_view_models: Vec::new(),
             attachment_world_models: Vec::new(),
+            attachment_view_ads_models: Vec::new(),
             t6_clip_models: Default::default(),
             t6_attachments: Vec::new(),
             t6_attachment_stats: Vec::new(),
             iw5_configuration: None,
             prepared_attachments: Vec::new(),
+            attachment_caption_keys: Vec::new(),
             iw5_attachment_slots: std::array::from_fn(|_| None),
             iw5_reload_overrides: Vec::new(),
             iw5_anim_overrides: Vec::new(),
@@ -5878,6 +5921,7 @@ impl Default for WeaponRow {
             overlay_material_from_slot: false,
             hud_icon: None,
             hud_icon_from_slot: false,
+            own_hud_icon: false,
             pickup_icon: None,
             pickup_icon_image: None,
             pickup_icon_authored: false,
@@ -5991,6 +6035,33 @@ fn compose_t6_configuration(base: &WeaponRow, kinds: &[u32], name: String) -> Op
             models.extend(attachment.models[side].iter().cloned());
         }
     }
+    // The overlay is the pair's, else none under a sight looked through,
+    // else the one an attachment changes the scope's to (a variable zoom).
+    if !singles.is_empty() {
+        let overlay = match pair {
+            Some(pair) => pair.overlay.clone(),
+            None if singles.iter().any(|a| a.overlay.is_none()) => None,
+            None => singles
+                .iter()
+                .filter_map(|a| a.overlay.clone())
+                .find(|overlay| base.overlay_material.as_ref() != Some(overlay))
+                .or_else(|| base.overlay_material.clone()),
+        };
+        // A sight looked through aims down it like iron sights; a scope
+        // overlay hides the gun and steadies with a held breath.
+        match &overlay {
+            None => row.facts.overlay_reticle = 0,
+            Some(_) if row.facts.overlay_reticle == 0 => row.facts.overlay_reticle = 1,
+            Some(_) => {}
+        }
+        row.facts.can_hold_breath = overlay.is_some() && row.facts.weap_class != 11;
+        row.overlay_image = overlay.clone();
+        row.overlay_material = overlay;
+    }
+    row.attachment_view_ads_models = singles
+        .iter()
+        .filter_map(|attachment| attachment.view_ads_model.clone())
+        .collect();
     // An attachment's clip set repeats the weapon's where it changes
     // nothing; only its own clips replace the weapon's, so one
     // attachment's set does not undo another's.
@@ -6008,6 +6079,13 @@ fn compose_t6_configuration(base: &WeaponRow, kinds: &[u32], name: String) -> Op
         .filter_map(|&kind| base.t6_attachment_stats.iter().find(|stats| stats.kind == kind))
     {
         apply_t6_attachment_stats(&mut row.facts, stats);
+    }
+    // Attachments that change only numbers (FMJ) leave the gun as bare,
+    // its own scope hiding its iron sights.
+    if singles.is_empty()
+        && let Some(bare) = base.t6_attachments.iter().find(|a| a.kind == 0 && a.mask == 0)
+    {
+        row.hide_tags = bare.hide_tags.clone();
     }
     for attachment in &singles {
         row.hide_tags.extend(attachment.hide_tags.iter().cloned());
@@ -6147,6 +6225,12 @@ impl WeaponBuild {
                 compose_t6_configuration(&self.registry.rows[base_id as usize], &kinds, name)
             }) {
                 Some(mut row) => {
+                    row.attachment_caption_keys = attachments
+                        .iter()
+                        .filter_map(|name| family.attachments.iter().find(|a| &a.name == name))
+                        .map(|a| a.caption_key.trim_start_matches('@').to_owned())
+                        .filter(|key| !key.is_empty())
+                        .collect();
                     row.prepared_attachments = attachments.clone();
                     prepared.push((
                         base_id,
@@ -6229,6 +6313,7 @@ impl WeaponBuild {
         alt.alternate_weapon = Some(config.name.clone());
         alt.attachment_view_models = config.attachment_view_models.clone();
         alt.attachment_world_models = config.attachment_world_models.clone();
+        alt.attachment_view_ads_models = config.attachment_view_ads_models.clone();
         alt.hide_tags = config.hide_tags.clone();
         alt.t6_attachments = Vec::new();
         // The alternate plays the configuration's clips (a grip's) where its
@@ -6642,6 +6727,21 @@ impl WeaponBuild {
                 })
                 .collect();
             dressed.t6_attachment_stats = own.t6_attachment_stats.clone();
+            // Equipment shows its own HUD icon, not the stand-in's.
+            if dressed.facts.offhand_class != 0
+                && let Some(icon) = own.hud_icon.clone()
+            {
+                dressed.hud_icon_image = Some(icon.clone());
+                dressed.hud_icon = Some(icon);
+                dressed.hud_icon_from_slot = false;
+                dressed.hud_icon_ratio = 0;
+                dressed.pickup_icon_authored = false;
+                dressed.own_hud_icon = true;
+            }
+            // The weapon's own scope overlay, or none: not the stand-in's.
+            dressed.overlay_material = own.overlay_material;
+            dressed.overlay_image = own.overlay_image;
+            dressed.overlay_material_from_slot = false;
             dressed.name = own.name;
             dressed.namespace = crate::AssetNamespace::T6;
             dressed.alternate_weapon = own.alternate_weapon;
@@ -6795,6 +6895,29 @@ impl WeaponBuild {
         }
     }
 
+    /// T6 times many alternate switches (select fire) at zero, the switch
+    /// lasting its clip; a zero-length raise would end before its clip plays.
+    pub fn time_t6_alternate_raises(&mut self, xanims: &crate::XAnimCatalog) -> usize {
+        let mut timed = 0;
+        for row in &mut self.registry.rows {
+            if row.namespace != crate::AssetNamespace::T6 || row.alternate_weapon.is_none() {
+                continue;
+            }
+            let Some(clip) = row.sz_xanim_edges[weap_anim::ALT_RAISE]
+                .bound_index()
+                .and_then(|index| xanims.clip_at(index))
+            else {
+                continue;
+            };
+            let clip_ms = (clip.duration() * 1000.0).round() as i32;
+            if row.facts.alternate_raise_time_ms < clip_ms / 2 {
+                row.facts.alternate_raise_time_ms = clip_ms;
+                timed += 1;
+            }
+        }
+        timed
+    }
+
     pub fn resolve_notetrack_actions(&mut self, xanims: &crate::XAnimCatalog) -> (usize, usize) {
         let mut linked = 0;
         let mut inline = 0;
@@ -6888,6 +7011,17 @@ impl WeaponBuild {
                     row.namespace == crate::AssetNamespace::T6,
                 );
                 if let Ok(plan) = &mut plan {
+                    // A model the catalog lacks keeps its main one in view.
+                    plan.ads_swaps = row
+                        .attachment_view_ads_models
+                        .iter()
+                        .filter_map(|(model, ads)| {
+                            let at = row.attachment_view_models.iter().position(|m| m == model)?;
+                            let ads = fpv_model_edge(Some(ads), row.namespace.content(), fpv)
+                                .bound_index()?;
+                            Some((at, crate::FpvMeshIndex::from_order(ads)))
+                        })
+                        .collect();
                     if let Some(name) = row.secondary_gun_xmodel.as_deref() {
                         let model = fpv_model_edge(Some(name), row.namespace.content(), fpv)
                             .bound_index();
@@ -7029,12 +7163,13 @@ impl WeaponBuild {
             let mut assemble = |hands: crate::FpvMeshIndex,
                                 mounts: &asset_model::FpvMountPlan,
                                 rocket: bool,
-                                knife: Option<crate::FpvMeshIndex>| {
+                                knife: Option<crate::FpvMeshIndex>,
+                                ads: bool| {
                 let key = crate::FpvAssemblyKey {
                     hands,
                     gun: mounts.gun,
                     secondary_gun: mounts.secondary_gun,
-                    attachments: mounts.attachments.iter().map(|mount| mount.model).collect(),
+                    attachments: mounts.attachment_models(ads).collect(),
                     rocket: rocket
                         .then(|| mounts.rocket.as_ref().map(|mount| mount.model))
                         .flatten(),
@@ -7047,7 +7182,7 @@ impl WeaponBuild {
                     .or_insert_with(|| {
                         census.built += 1;
                         crate::FpvAssembly::build(
-                            fpv, hands, mounts, rocket, knife, &hide_tags, hide_mode,
+                            fpv, hands, mounts, rocket, knife, ads, &hide_tags, hide_mode,
                         )
                             .map(Arc::new)
                             .map_err(|error| error.to_string())
@@ -7057,14 +7192,14 @@ impl WeaponBuild {
             let sides: [Option<Result<crate::FpvSideAssemblies, String>>; 2] =
                 std::array::from_fn(|side| {
                     let (_, hands) = row.fpv_hands[side].as_ref()?;
-                    let bare = match assemble(*hands, mounts, false, None) {
+                    let bare = match assemble(*hands, mounts, false, None, false) {
                         Ok(bare) => bare,
                         Err(error) => return Some(Err(error)),
                     };
                     let rocket = match mounts
                         .rocket
                         .is_some()
-                        .then(|| assemble(*hands, mounts, true, None))
+                        .then(|| assemble(*hands, mounts, true, None, false))
                     {
                         None => None,
                         Some(Ok(rocket)) => Some(rocket),
@@ -7073,21 +7208,30 @@ impl WeaponBuild {
                     let melee = match &knife_model {
                         None => None,
                         Some(Err(error)) => return Some(Err(error.clone())),
-                        Some(Ok(knife)) => match assemble(*hands, mounts, false, Some(*knife)) {
+                        Some(Ok(knife)) => match assemble(*hands, mounts, false, Some(*knife), false) {
                             Ok(melee) => Some(melee),
                             Err(error) => return Some(Err(error)),
                         },
+                    };
+                    let ads = match (!mounts.ads_swaps.is_empty())
+                        .then(|| assemble(*hands, mounts, false, None, true))
+                    {
+                        None => None,
+                        Some(Ok(ads)) => Some(ads),
+                        Some(Err(error)) => return Some(Err(error)),
                     };
                     Some(Ok(crate::FpvSideAssemblies {
                         bare,
                         rocket,
                         melee,
+                        ads,
                     }))
                 });
             for side in sides.iter().flatten().flatten() {
                 for assembly in std::iter::once(&side.bare)
                     .chain(&side.rocket)
                     .chain(&side.melee)
+                    .chain(&side.ads)
                 {
                     for &clip_index in &clips {
                         let Some(clip) = xanims.clip_at(clip_index) else {
@@ -7472,11 +7616,13 @@ impl WeaponBuild {
                 hide_tags: entry.hide_tags,
                 attachment_view_models: entry.attached_models[0].clone(),
                 attachment_world_models: entry.attached_models[1].clone(),
+                attachment_view_ads_models: Vec::new(),
                 t6_clip_models: entry.t6_clip_models,
                 t6_attachments: entry.t6_attachments,
                 t6_attachment_stats: entry.t6_attachment_stats,
                 iw5_configuration: None,
                 prepared_attachments: Vec::new(),
+                attachment_caption_keys: Vec::new(),
                 iw5_attachment_slots: entry.iw5_attachment_slots,
                 iw5_reload_overrides: entry.iw5_reload_overrides,
                 iw5_anim_overrides: entry.iw5_anim_overrides,
@@ -7490,6 +7636,7 @@ impl WeaponBuild {
                 overlay_material: entry.overlay_material,
                 overlay_image: entry.overlay_image,
                 hud_icon_from_slot: entry.hud_icon_slot.is_some(),
+                own_hud_icon: false,
                 hud_icon: entry.hud_icon,
                 hud_icon_image: entry.hud_icon_image,
                 pickup_icon: entry.pickup_icon,
@@ -8604,6 +8751,13 @@ impl WeaponRegistry {
         self.families.describe(id)
     }
 
+    /// See [`WeaponRow::attachment_caption_keys`].
+    pub fn attachment_caption_keys_of(&self, index: u32) -> &[String] {
+        self.rows
+            .get(index as usize)
+            .map_or(&[], |row| row.attachment_caption_keys.as_slice())
+    }
+
     pub fn prepared_attachments_of(&self, id: u32) -> &[String] {
         self.rows
             .get(id as usize)
@@ -8850,6 +9004,17 @@ impl WeaponRegistry {
         } else {
             Some((row.hud_icon_image.as_deref()?, row.hud_icon_ratio))
         }
+    }
+
+    /// Where [`Self::hud_icon_image_of`] resolves: a T6 row's own icon in
+    /// T6, any other in the row's content namespace.
+    pub fn hud_icon_namespace_of(&self, index: u32) -> Option<crate::AssetNamespace> {
+        let row = self.rows.get(index as usize).filter(|_| index != 0)?;
+        Some(if row.own_hud_icon {
+            row.namespace
+        } else {
+            row.namespace.content()
+        })
     }
 
     pub fn hud_icon_image_of(&self, index: u32) -> Option<&str> {

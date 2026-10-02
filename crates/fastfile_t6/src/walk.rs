@@ -191,9 +191,20 @@ pub struct LoadedAsset {
     /// loaded, by field offset. Read these rather than [`ZoneLoad::asset_at`]
     /// on the header's address, which later loads may reuse.
     pub fields: Vec<(u32, usize)>,
+    /// Every asset pointer slot bound while this asset loaded (its header's
+    /// and its arrays'), sorted by slot, with the asset each named then.
+    pub bound: Vec<(Ptr, usize)>,
 }
 
 impl LoadedAsset {
+    /// Index of the asset `slot` named while this asset loaded.
+    pub fn bound_at(&self, slot: Ptr) -> Option<usize> {
+        self.bound
+            .binary_search_by(|(at, _)| at.cmp(&slot))
+            .ok()
+            .map(|i| self.bound[i].1)
+    }
+
     /// Index (into [`ZoneLoad::assets`]) of the asset field `offset` names.
     pub fn field(&self, offset: u32) -> Option<usize> {
         self.fields
@@ -216,8 +227,19 @@ pub struct ZoneLoad {
 
 impl ZoneLoad {
     /// The asset a pointer field refers to, if the loader put one there.
+    /// Later loads may reuse a slot's memory: a slot of a loaded asset's
+    /// is better read through [`Self::asset_in`].
     pub fn asset_at(&self, slot: Ptr) -> Option<&LoadedAsset> {
         self.asset_slots.get(&slot).map(|&i| &self.assets[i])
+    }
+
+    /// The asset `slot` named while `owner` loaded (`slot` in its header
+    /// or its arrays), else whatever the slot names now.
+    pub fn asset_in(&self, owner: &LoadedAsset, slot: Ptr) -> Option<&LoadedAsset> {
+        owner
+            .bound_at(slot)
+            .map(|i| &self.assets[i])
+            .or_else(|| self.asset_at(slot))
     }
 
     /// Script string `id` (bone names, notetracks); `None` past the table.
@@ -817,19 +839,23 @@ impl<'a> Walker<'a> {
                 let header = self.mem.bytes(at, root.size as usize)?.to_vec();
                 let end = at.at(root.size);
                 let mut fields: Vec<(u32, usize)> = Vec::new();
-                for &(field, index) in &self.slot_log[log_start..] {
-                    if (at..end).contains(&field) {
-                        let offset = field.offset - at.offset;
+                let mut bound: BTreeMap<Ptr, usize> = BTreeMap::new();
+                for &(slot, index) in &self.slot_log[log_start..] {
+                    bound.insert(slot, index);
+                    if (at..end).contains(&slot) {
+                        let offset = slot.offset - at.offset;
                         fields.retain(|(o, _)| *o != offset);
                         fields.push((offset, index));
                     }
                 }
+                let bound = bound.into_iter().collect();
                 let index = self.assets.len();
                 self.assets.push(LoadedAsset {
                     ty,
                     list_index,
                     header,
                     fields,
+                    bound,
                 });
                 self.bind_slot(slot, index);
                 self.addresses.insert(at, index);

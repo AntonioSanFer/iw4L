@@ -1046,14 +1046,29 @@ pub(super) fn bind_t6_content(
                     return Some(asset_core::WalkLocalMaterialIndex::from_walk(index));
                 }
                 let captured = content.materials.get(name)?;
-                // A first-person model draws with its own T6 technique set.
-                if model.view
-                    && let Some(native) = &captured.native
+                // A model draws with its own T6 technique set, the world
+                // model sharing the first-person model's material.
+                if let Some(&index) = bound.get(&(name.clone(), true))
+                    && captured.native.is_some()
+                {
+                    bound.insert(key, index);
+                    return Some(asset_core::WalkLocalMaterialIndex::from_walk(index));
+                }
+                if let Some(native) = &captured.native
                     && let Some(set) = content.techsets.get(&native.technique_set)
                 {
-                    if !linked_techsets.contains(&native.technique_set) {
-                        materials.link_t6_technique_set(set, &mut native_report);
-                        linked_techsets.insert(native.technique_set.clone());
+                    // A material drawn only emissive (an optic's reticle)
+                    // takes the emissive state's blend.
+                    let (draw, state) = match (native.lit_state, native.emissive_state) {
+                        (None, Some(emissive)) => {
+                            (asset_material::t6_techset::T6Draw::Emissive, Some(emissive))
+                        }
+                        (lit, _) => (asset_material::t6_techset::T6Draw::Lit, lit),
+                    };
+                    let linked = draw.technique_set_name(&native.technique_set);
+                    if !linked_techsets.contains(&linked) {
+                        materials.link_t6_technique_set(set, draw, &mut native_report);
+                        linked_techsets.insert(linked);
                     }
                     if let Some(index) = materials.t6_material(
                         donor,
@@ -1061,9 +1076,11 @@ pub(super) fn bind_t6_content(
                         set,
                         &native.textures,
                         native.constants.clone(),
-                        native.lit_state,
+                        state,
+                        draw,
                     ) {
                         native_n += 1;
+                        bound.insert((name.clone(), true), index);
                         bound.insert(key, index);
                         return Some(asset_core::WalkLocalMaterialIndex::from_walk(index));
                     }

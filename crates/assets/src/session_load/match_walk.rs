@@ -281,6 +281,8 @@ pub(super) async fn walk_prepared_match(
             xanims.name_at(*index).unwrap_or("<unknown>")
         ));
     }
+    let t6_alt_raises = weapons.time_t6_alternate_raises(&xanims);
+    report.push(format!("T6 alternate raises timed by their clips: {t6_alt_raises}"));
     let (note_actions, inline_note_actions) = weapons.resolve_notetrack_actions(&xanims);
     report.push(format!(
         "weapon notetrack actions linked: {note_actions} ({inline_note_actions} T5 inline)"

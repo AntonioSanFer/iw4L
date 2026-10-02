@@ -43,6 +43,8 @@ pub struct T6NativeMaterial {
     /// The first load-bits word of the material's `lit` state: its blend
     /// and alpha test, laid out as IW4's.
     pub lit_state: Option<u32>,
+    /// Its `emissive` state: an optic's reticle draws only emissive.
+    pub emissive_state: Option<u32>,
 }
 
 #[derive(Default)]
@@ -444,7 +446,7 @@ fn read_texture(
             continue;
         }
         let sampler_state = bytes[6];
-        let Some(image) = load.asset_at(def.at(12)) else {
+        let Some(image) = load.asset_in(material, def.at(12)) else {
             return Ok(None);
         };
         let (name, iwi) = read_streamed_image(load, image, ipaks)?;
@@ -631,7 +633,12 @@ fn capture_native(
     techsets: &mut BTreeMap<String, asset_material::t6_techset::T6TechniqueSet>,
     report: &mut Vec<String>,
 ) -> Option<T6NativeMaterial> {
-    let techset = load.asset_at(address.at(MATERIAL_TECHNIQUE_SET))?;
+    // Read through the material's own record: the slot's memory may since
+    // hold another material's.
+    let techset = material
+        .field(MATERIAL_TECHNIQUE_SET)
+        .map(|index| &load.assets[index])
+        .or_else(|| load.asset_at(address.at(MATERIAL_TECHNIQUE_SET)))?;
     // A `,name` technique set is another zone's, referenced by name.
     let technique_set = header_str(load, &techset.header, 0)?
         .trim_start_matches(',')
@@ -668,17 +675,23 @@ fn capture_native(
         }
     }
     let header = &material.header;
-    let lit_state = header
-        .get(MATERIAL_STATE_BITS_ENTRY + asset_material::t6_techset::T6_TECHNIQUE_LIT)
-        .filter(|&&entry| entry != 0xff)
-        .and_then(|&entry| {
-            let table = decode_ptr(header_u32(header, MATERIAL_STATE_BITS_TABLE)?)?;
-            let bytes = load
-                .blocks
-                .bytes(table.at(u32::from(entry) * MATERIAL_STATE_BITS), 4)
-                .ok()?;
-            header_u32(bytes, 0)
-        });
+    // The first load-bits word of the material's state in a technique;
+    // `None` where the material does not draw with it.
+    let state = |technique: usize| {
+        header
+            .get(MATERIAL_STATE_BITS_ENTRY + technique)
+            .filter(|&&entry| entry != 0xff)
+            .and_then(|&entry| {
+                let table = decode_ptr(header_u32(header, MATERIAL_STATE_BITS_TABLE)?)?;
+                let bytes = load
+                    .blocks
+                    .bytes(table.at(u32::from(entry) * MATERIAL_STATE_BITS), 4)
+                    .ok()?;
+                header_u32(bytes, 0)
+            })
+    };
+    let lit_state = state(asset_material::t6_techset::T6_TECHNIQUE_LIT);
+    let emissive_state = state(asset_material::t6_techset::T6_TECHNIQUE_EMISSIVE);
     // T6 colour maps keep the weapon's camo mask in alpha, and T6 lit
     // shaders scale their output by that alpha; an opaque surface reads
     // it as one.
@@ -695,7 +708,7 @@ fn capture_native(
             continue;
         };
         let (name_hash, sampler_state, semantic) = (header_u32(bytes, 0)?, bytes[6], bytes[7]);
-        let Some(image) = load.asset_at(def.at(12)) else {
+        let Some(image) = load.asset_in(material, def.at(12)) else {
             continue;
         };
         let image_name = header_str(load, &image.header, IMAGE_NAME)
@@ -760,6 +773,7 @@ fn capture_native(
         textures,
         constants,
         lit_state,
+        emissive_state,
     })
 }
 
@@ -792,11 +806,11 @@ fn read_streamed_image(
 
 /// The zones beside `common_mp`, besides `common_mp` and `patch_mp`, whose
 /// materials the class menu's weapon icons are (`menu_mp_weapons_*`,
-/// `hud_*`).
-const ICON_ZONES: [&str; 2] = ["code_post_gfx_mp.ff", "ui_mp.ff"];
+/// `hud_*`), the scope overlays and the equipment's HUD icons.
+const ICON_ZONES: [&str; 3] = ["code_post_gfx_mp.ff", "patch_ui_mp.ff", "ui_mp.ff"];
 
-/// The colour map of every material the stats table's weapon rows show in
-/// the class menu, decoded to RGBA and keyed by material name. The first of
+/// The colour map of every material the stats table's weapon rows and the
+/// attachment table show in the class menu, decoded to RGBA and keyed by material name. The first of
 /// `loads` defining a material wins.
 fn capture_weapon_icons(
     common: &Path,
@@ -807,14 +821,34 @@ fn capture_weapon_icons(
     let mut wanted = std::collections::BTreeSet::new();
     for load in loads {
         for asset in &load.assets {
-            let Some(table) = asset_game::capture_t6_string_table(load, asset)
-                .filter(|table| asset_game::is_stats_table_name(&table.name))
-            else {
+            // The scope overlays of the weapons and of their attachments.
+            if let Some(weapon) = fastfile_t6::weapon::WeaponView::new(load, asset) {
+                let overlays = weapon
+                    .attachment_uniques()
+                    .filter_map(|unique| {
+                        unique.asset_field_name(fastfile_t6::weapon::unique::OVERLAY_MATERIAL)
+                    })
+                    .chain(weapon.variant_asset_name(fastfile_t6::weapon::variant::OVERLAY_MATERIAL));
+                wanted.extend(overlays.map(str::to_ascii_lowercase));
+                // An equipment's HUD icon.
+                if let Some(icon) = weapon.def_loaded_asset_name(fastfile_t6::weapon::def::HUD_ICON) {
+                    wanted.insert(asset_game::t6_model_name(icon).to_ascii_lowercase());
+                }
+            }
+            let Some(table) = asset_game::capture_t6_string_table(load, asset) else {
                 continue;
             };
+            let attachments = table.name.eq_ignore_ascii_case("mp/attachmentTable.csv");
+            if !attachments && !asset_game::is_stats_table_name(&table.name) {
+                continue;
+            }
             for row in 0..table.rows {
-                let cell = |column: usize| table.cells[row * table.columns + column].as_str();
-                if cell(2).starts_with("weapon_") && !cell(6).is_empty() {
+                let cell = |column: usize| {
+                    table.cells.get(row * table.columns + column).map_or("", String::as_str)
+                };
+                // The attachment table's icons (column 6), every row an
+                // attachment's; the stats table's, its weapon rows.
+                if (attachments || cell(2).starts_with("weapon_")) && !cell(6).is_empty() {
                     wanted.insert(cell(6).to_ascii_lowercase());
                 }
             }
@@ -840,6 +874,7 @@ fn capture_weapon_icons(
         .collect();
     let mut icons = Vec::new();
     let mut failed = Vec::new();
+    let all: Vec<&fastfile_t6::ZoneLoad> = loads.iter().copied().chain(&extra).collect();
     for load in loads.iter().copied().chain(&extra) {
         for asset in &load.assets {
             if asset.ty != fastfile_t6::AssetType::Material {
@@ -852,7 +887,7 @@ fn capture_weapon_icons(
             if !wanted.remove(&name) {
                 continue;
             }
-            match capture_icon(load, asset, ipaks) {
+            match capture_icon(load, asset, &all, ipaks) {
                 Ok((width, height, rgba)) => icons.push((name, (width, height, Arc::new(rgba)))),
                 Err(error) => failed.push(format!("{name}: {error}")),
             }
@@ -871,6 +906,7 @@ fn capture_weapon_icons(
 fn capture_icon(
     load: &fastfile_t6::ZoneLoad,
     material: &fastfile_t6::LoadedAsset,
+    zones: &[&fastfile_t6::ZoneLoad],
     ipaks: &[asset_transport::IPak],
 ) -> Result<(u32, u32, Vec<u8>), String> {
     let header = &material.header;
@@ -889,8 +925,23 @@ fn capture_icon(
         if load.blocks.u32_at(def).ok() != Some(COLOR_MAP_HASH) {
             continue;
         }
-        let image = load.asset_at(def.at(12)).ok_or("colour map without an image")?;
-        let (name, bytes) = read_streamed_image(load, image, ipaks)?;
+        let image = load.asset_in(material, def.at(12)).ok_or("colour map without an image")?;
+        let (name, bytes) = match read_streamed_image(load, image, ipaks) {
+            Ok(read) => read,
+            // A `,name` image is another zone's: read that zone's.
+            Err(error) => header_str(load, &image.header, IMAGE_NAME)
+                .and_then(|name| name.strip_prefix(','))
+                .and_then(|name| {
+                    zones.iter().find_map(|zone| {
+                        zone.assets
+                            .iter()
+                            .filter(|asset| asset.ty == fastfile_t6::AssetType::Image)
+                            .filter(|asset| header_str(zone, &asset.header, IMAGE_NAME) == Some(name))
+                            .find_map(|asset| read_streamed_image(zone, asset, ipaks).ok())
+                    })
+                })
+                .ok_or(error)?,
+        };
         return asset_material::decode_iwi_rgba(&bytes).map_err(|e| format!("{name}: {e}"));
     }
     Err("no colour map".to_owned())
@@ -956,12 +1007,18 @@ fn capture_content(
             }
         }
         for unique in weapon.attachment_uniques() {
-            for view in [true, false] {
-                for placed in asset_game::t6_attachment_models(unique, view) {
-                    placements.insert(placed.copy.clone(), (placed.offset, placed.angles));
-                    wanted.entry(placed.copy.clone()).or_insert((view, false, stand_in));
-                    copies.insert(placed.copy, (placed.model, placed.tag));
-                }
+            let placed = [true, false]
+                .into_iter()
+                .flat_map(|view| {
+                    asset_game::t6_attachment_models(unique, view)
+                        .into_iter()
+                        .map(move |placed| (placed, view))
+                })
+                .chain(asset_game::t6_attachment_ads_model(unique).map(|placed| (placed, true)));
+            for (placed, view) in placed {
+                placements.insert(placed.copy.clone(), (placed.offset, placed.angles));
+                wanted.entry(placed.copy.clone()).or_insert((view, false, stand_in));
+                copies.insert(placed.copy, (placed.model, placed.tag));
             }
         }
         for view in [true, false] {
@@ -1018,7 +1075,7 @@ fn capture_content(
         for surface in 0..model.surface_count() {
             let material = model
                 .material_slot(surface)
-                .and_then(|slot| load.asset_at(slot));
+                .and_then(|slot| load.asset_in(asset, slot));
             let material_name = material
                 .and_then(|m| header_str(load, &m.header, 0))
                 .map(str::to_owned);

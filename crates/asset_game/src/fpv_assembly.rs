@@ -92,6 +92,8 @@ pub struct FpvSideAssemblies {
     pub bare: Arc<FpvAssembly>,
     pub rocket: Option<Arc<FpvAssembly>>,
     pub melee: Option<Arc<FpvAssembly>>,
+    /// Drawn while aiming, when an attachment then swaps its model.
+    pub ads: Option<Arc<FpvAssembly>>,
 }
 
 impl FpvSideAssemblies {
@@ -129,6 +131,7 @@ impl FpvAssembly {
         mounts: &FpvMountPlan,
         rocket: bool,
         knife: Option<FpvMeshIndex>,
+        ads: bool,
         hide_tags: &[String],
         hide_mode: FpvHideMode,
     ) -> Result<Self, FpvAssemblyError> {
@@ -159,9 +162,9 @@ impl FpvAssembly {
                 }),
             ));
         }
-        for mount in &mounts.attachments {
+        for (mount, model) in mounts.attachments.iter().zip(mounts.attachment_models(ads)) {
             parts.push((
-                mount.model,
+                model,
                 FpvPartRole::Attachment,
                 Some(Attach {
                     parent_model: mount.parent_model

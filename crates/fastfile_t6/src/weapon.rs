@@ -43,6 +43,8 @@ pub mod variant {
     pub const ADS_TRANS_IN_TIME: u32 = 496;
     pub const ADS_TRANS_OUT_TIME: u32 = 500;
     pub const ALT_RAISE_TIME: u32 = 504;
+    /// `Material* overlayMaterial`: a sniper scope's ADS overlay.
+    pub const OVERLAY_MATERIAL: u32 = 596;
     pub const ADS_VIEW_KICK_CENTER_SPEED: u32 = 540;
     pub const HIP_VIEW_KICK_CENTER_SPEED: u32 = 544;
     pub const ADS_ZOOM_FOV1: u32 = 548;
@@ -284,6 +286,9 @@ pub mod unique {
     pub const HIDE_TAG_COUNT: u32 = 32;
     pub const VIEW_MODEL: u32 = 40;
     pub const VIEW_MODEL_ADDITIONAL: u32 = 44;
+    /// The first-person model drawn instead of the main one while aiming
+    /// (an optic's housing without the parts in front of the eye).
+    pub const VIEW_MODEL_ADS: u32 = 48;
     pub const WORLD_MODEL: u32 = 52;
     pub const WORLD_MODEL_ADDITIONAL: u32 = 56;
     /// The gun bone the models hang from; empty for the gun's root.
@@ -300,6 +305,10 @@ pub mod unique {
     /// The weapon's own attached optic (or its magazine) is removed.
     pub const DISABLE_BASE_ATTACHMENT: u32 = 168;
     pub const DISABLE_BASE_CLIP: u32 = 169;
+    /// `Material* overlayMaterial`: the scope overlay the weapon shows
+    /// with this attachment (its own scope's, a variable zoom's), none
+    /// where the attachment is a sight looked through.
+    pub const OVERLAY_MATERIAL: u32 = 196;
     /// `const char** szXAnims`: the weapon's clips with this attachment, by
     /// [`super::weap_anim`]; an empty name keeps the weapon's own.
     pub const XANIMS: u32 = 232;
@@ -487,6 +496,24 @@ impl<'z> AttachmentUniqueView<'z> {
         })
     }
 
+    /// The asset a pointer field named when this was loaded (an overlay
+    /// material).
+    pub fn asset_field_name(&self, off: u32) -> Option<&'z str> {
+        self.model_name(off).filter(|name| !name.is_empty())
+    }
+
+    /// The first-person model that stands in for the main one while
+    /// aiming, placed as the main one is.
+    pub fn ads_model(&self) -> Option<UniqueModel<'z>> {
+        use unique as u;
+        Some((
+            self.model_name(u::VIEW_MODEL_ADS)?,
+            self.str_at(u::VIEW_MODEL_TAG),
+            self.vec3(u::VIEW_MODEL_OFFSETS),
+            self.vec3(u::VIEW_MODEL_ROTATIONS),
+        ))
+    }
+
     /// The clip in `slot` ([`weap_anim`]), when this attachment names one.
     pub fn xanim(&self, slot: u32) -> Option<&'z str> {
         let arr = crate::walk::decode_ptr(self.u32_at(unique::XANIMS))?;
@@ -565,6 +592,7 @@ pub mod offhand_slot {
 #[derive(Clone, Copy)]
 pub struct WeaponView<'z> {
     load: &'z ZoneLoad,
+    asset: &'z LoadedAsset,
     variant: &'z [u8],
     def: Option<Ptr>,
 }
@@ -576,6 +604,7 @@ impl<'z> WeaponView<'z> {
         }
         let mut view = Self {
             load,
+            asset,
             variant: &asset.header,
             def: None,
         };
@@ -612,6 +641,19 @@ impl<'z> WeaponView<'z> {
             (asset.ty == crate::AssetType::AttachmentUnique)
                 .then_some(AttachmentUniqueView { load, asset })
         })
+    }
+
+    /// The asset a pointer field of the variant named when it was loaded
+    /// (its scope overlay).
+    pub fn variant_asset_name(&self, off: u32) -> Option<&'z str> {
+        let asset = &self.load.assets[self.asset.field(off)?];
+        let p = crate::walk::decode_ptr(u32::from_le_bytes(asset.header.get(0..4)?.try_into().ok()?))?;
+        self.load
+            .blocks
+            .cstr(p)
+            .ok()
+            .and_then(|b| core::str::from_utf8(b).ok())
+            .filter(|name| !name.is_empty())
     }
 
     pub fn has_def(&self) -> bool {
@@ -681,6 +723,19 @@ impl<'z> WeaponView<'z> {
 
     /// The name of the asset a `WeaponDef` pointer field refers to (an
     /// `XModel*`, `Material*`, …), read from that asset's header.
+    /// The asset a `WeaponDef` pointer field named when the weapon was
+    /// loaded (its HUD icon).
+    pub fn def_loaded_asset_name(&self, off: u32) -> Option<&'z str> {
+        let asset = self.load.asset_in(self.asset, self.def?.at(off))?;
+        let p = crate::walk::decode_ptr(u32::from_le_bytes(asset.header.get(0..4)?.try_into().ok()?))?;
+        self.load
+            .blocks
+            .cstr(p)
+            .ok()
+            .and_then(|b| core::str::from_utf8(b).ok())
+            .filter(|name| !name.is_empty())
+    }
+
     pub fn def_asset_name(&self, off: u32) -> Option<&'z str> {
         asset_name(self.load, self.def?.at(off))
     }
