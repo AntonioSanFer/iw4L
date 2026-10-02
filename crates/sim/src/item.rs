@@ -519,7 +519,8 @@ fn grab_number(world: &mut FrameWorld, walker: ClientId, number: i32) {
             give_weapon_to_ps_akimbo(&mut next, weapon, akimbo);
 
             if let Some(facts) = world.combat_facts_for(weapon) {
-                let hand = weapon_iw4::spawn_weapon_hand(weapon, &facts);
+                let hand = weapon_iw4::spawn_weapon_hand(weapon, &facts, true);
+                crate::combat::raise_given_weapon(&mut next, weapon, &hand);
                 next.weaponstate_primary = hand.weaponstate;
                 next.weapon_time = hand.weapon_time;
                 next.weapon_delay = hand.weapon_delay;

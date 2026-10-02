@@ -35,6 +35,7 @@ pub(crate) fn validated_facts(
         alternate_weapon: 0,
         alternate_raise_time_ms: f.alternate_raise_time_ms,
         alternate_drop_time_ms: f.alternate_drop_time_ms,
+        first_raise_time_ms: f.first_raise_time_ms,
         reload_time_ms: f.reload_time_ms,
         reload_empty_time_ms: f.reload_empty_time_ms,
         clip_size: f.clip_size,

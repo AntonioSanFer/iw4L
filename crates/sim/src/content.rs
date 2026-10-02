@@ -71,6 +71,7 @@ fn hash_combat(h: &mut Digest, combat: &[WeaponCombatFacts]) {
         h.u32(row.alternate_weapon);
         h.i32(row.alternate_raise_time_ms);
         h.i32(row.alternate_drop_time_ms);
+        h.i32(row.first_raise_time_ms);
         h.i32(row.quick_drop_time_ms);
         h.i32(row.inventory_type);
         h.i32(row.weap_class);

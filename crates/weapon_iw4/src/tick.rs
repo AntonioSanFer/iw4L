@@ -35,6 +35,8 @@ pub struct CapturedCombatInput {
     pub alternate_weapon: u32,
     pub alternate_raise_time_ms: i32,
     pub alternate_drop_time_ms: i32,
+    /// The raise of a weapon not raised since it was given.
+    pub first_raise_time_ms: i32,
     pub reload_time_ms: i32,
     pub reload_empty_time_ms: i32,
     pub clip_size: i32,
@@ -172,6 +174,8 @@ pub struct WeaponCombatFacts {
     pub alternate_weapon: u32,
     pub alternate_raise_time_ms: i32,
     pub alternate_drop_time_ms: i32,
+    /// The raise of a weapon not raised since it was given.
+    pub first_raise_time_ms: i32,
     pub reload_time_ms: i32,
     pub reload_empty_time_ms: i32,
     pub clip_size: i32,
@@ -312,6 +316,7 @@ impl WeaponCombatFacts {
             alternate_weapon: 0,
             alternate_raise_time_ms: 0,
             alternate_drop_time_ms: 0,
+            first_raise_time_ms: 0,
             reload_time_ms: 0,
             reload_empty_time_ms: 0,
             clip_size: 0,
@@ -426,6 +431,7 @@ impl WeaponCombatFacts {
             alternate_weapon: input.alternate_weapon,
             alternate_raise_time_ms: input.alternate_raise_time_ms,
             alternate_drop_time_ms: input.alternate_drop_time_ms,
+            first_raise_time_ms: input.first_raise_time_ms,
             reload_time_ms: input.reload_time_ms,
             reload_empty_time_ms: input.reload_empty_time_ms,
             clip_size: input.clip_size,
@@ -676,6 +682,9 @@ pub struct WeaponCmd {
     pub alternate_switch: bool,
 
     pub switch_quick_raise_time_ms: i32,
+    /// The weapon switched to is raised for the first time since it was
+    /// given: its first raise, when it has one.
+    pub switch_first_raise_time_ms: i32,
 
     pub offhand: crate::offhand::OffhandCmd,
 
@@ -713,6 +722,7 @@ impl Default for WeaponCmd {
             switch_alternate_raise_time_ms: 0,
             alternate_switch: false,
             switch_quick_raise_time_ms: 0,
+            switch_first_raise_time_ms: 0,
             offhand: crate::offhand::OffhandCmd::default(),
             perks0: 0,
             perk_weap_reload_multiplier: PERK_WEAP_RELOAD_MULTIPLIER_DEFAULT,
@@ -1541,7 +1551,9 @@ pub fn spawn_clip_stock(facts: &WeaponCombatFacts, last_hand: i32) -> (i32, i32,
     (clip0, clip1, stock)
 }
 
-pub fn spawn_weapon_hand(weapon: u32, facts: &WeaponCombatFacts) -> WeaponHandState {
+/// A hand holding `weapon` as it is put in it, raising; `first` for a
+/// weapon just given, which takes its first raise when it has one.
+pub fn spawn_weapon_hand(weapon: u32, facts: &WeaponCombatFacts, first: bool) -> WeaponHandState {
     let total = facts.start_ammo.max(0);
     let clip = if facts.clip_size > 0 {
         total.min(facts.clip_size)
@@ -1549,16 +1561,21 @@ pub fn spawn_weapon_hand(weapon: u32, facts: &WeaponCombatFacts) -> WeaponHandSt
         0
     };
     let stock = (total - clip).max(0);
-    let raise = if facts.raise_time_ms > 0 {
-        facts.raise_time_ms
+    let first = first && facts.first_raise_time_ms > 0;
+    let raise = if first {
+        facts.first_raise_time_ms
     } else {
-        0
+        facts.raise_time_ms.max(0)
     };
     let mut weap_anim = 0;
     if raise > 0 {
         crate::weap_anim::start_weapon_anim(
             &mut weap_anim,
-            crate::weap_anim::weap_anim_event::RAISE,
+            if first {
+                crate::weap_anim::weap_anim_event::FIRST_RAISE
+            } else {
+                crate::weap_anim::weap_anim_event::RAISE
+            },
         );
     }
     WeaponHandState {

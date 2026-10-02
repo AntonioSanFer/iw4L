@@ -32,6 +32,7 @@ pub struct WeaponBodyFacts {
     pub drop_time_ms: i32,
     pub alternate_raise_time_ms: i32,
     pub alternate_drop_time_ms: i32,
+    pub first_raise_time_ms: i32,
 
     pub fire_delay_ms: i32,
 
@@ -1591,6 +1592,7 @@ impl WeaponCatalog {
                 drop_time_ms: geometry.drop_time_ms,
                 alternate_raise_time_ms: geometry.alternate_raise_time_ms,
                 alternate_drop_time_ms: geometry.alternate_drop_time_ms,
+                first_raise_time_ms: geometry.first_raise_time_ms,
                 fire_delay_ms: geometry.fire_delay_ms,
                 hold_fire_time_ms: geometry.hold_fire_time_ms,
                 weap_type: geometry.weap_type,
@@ -3472,6 +3474,7 @@ fn capture_t6_body_facts(w: fastfile_t6::weapon::WeaponView<'_>) -> WeaponBodyFa
         raise_time_ms: w.def_i32(d::RAISE_TIME),
         alternate_raise_time_ms: w.variant_i32(v::ALT_RAISE_TIME),
         alternate_drop_time_ms: w.def_i32(d::ALT_DROP_TIME),
+        first_raise_time_ms: w.def_i32(d::FIRST_RAISE_TIME),
         quick_drop_time_ms: w.def_i32(d::QUICK_DROP_TIME),
         quick_raise_time_ms: w.def_i32(d::QUICK_RAISE_TIME),
         bolt_action: w.def_bool(d::BOLT_ACTION),
