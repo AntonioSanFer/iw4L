@@ -693,6 +693,9 @@ fn projectile_pickup_ammo(
         return None;
     }
     let facts = world.equipment_facts_for(weapon)?;
+    if facts.refuses_pickup {
+        return None;
+    }
     if !facts.is_retrievable_knife()
         && (!facts.is_offhand()
             || facts.stickiness == 0

@@ -80,6 +80,22 @@ pub fn is_tactical_equipment(name: &str) -> bool {
     TACTICAL_EQUIPMENT.contains(&base_name(name))
 }
 
+/// T6 equipment standing in for a claymore without its laser.
+const SHEDS_STAND_IN_TRAIL: &[&str] = &["bouncingbetty", "trophy_system"];
+
+/// Whether a T6 weapon drops its stand-in's projectile trail and beacon.
+pub fn sheds_stand_in_trail(name: &str) -> bool {
+    SHEDS_STAND_IN_TRAIL.contains(&base_name(name))
+}
+
+/// T6 equipment that is thrown like a grenade but stays where it lands.
+const STAYS_PLANTED: &[&str] = &["sensor_grenade"];
+
+/// Whether a T6 weapon is thrown like a grenade but stays where it lands.
+pub fn stays_planted(name: &str) -> bool {
+    STAYS_PLANTED.contains(&base_name(name))
+}
+
 /// T6 equipment whose scripts plant a model of their own, which its weapon
 /// does not name: it stands for the thrown one.
 const PLANTED_MODELS: &[(&str, &str)] = &[("tactical_insertion", "t6_wpn_tac_insert_world")];

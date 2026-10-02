@@ -260,6 +260,10 @@ pub struct WeaponBodyFacts {
     pub projectile_speed: i32,
     pub projectile_speed_up: i32,
     pub projectile_speed_forward: i32,
+    /// T5/T6's upward speed along the thrower's view (IW4 has none).
+    pub projectile_speed_relative_up: i32,
+    /// T6 equipment its owner cannot pick back up (not `bRetrievable`).
+    pub refuses_pickup: bool,
     pub projectile_activate_dist: i32,
     pub projectile_explosion_type: i32,
     pub parallel_bounce: Option<[f32; 31]>,
@@ -1731,6 +1735,8 @@ impl WeaponCatalog {
                 projectile_speed: geometry.projectile_speed,
                 projectile_speed_up: geometry.projectile_speed_up,
                 projectile_speed_forward: geometry.projectile_speed_forward,
+                projectile_speed_relative_up: 0,
+                refuses_pickup: false,
                 projectile_activate_dist: geometry.projectile_activate_dist,
                 projectile_explosion_type: geometry.projectile_explosion_type,
                 parallel_bounce: geometry.parallel_bounce,
@@ -3562,13 +3568,20 @@ fn capture_t6_body_facts(w: fastfile_t6::weapon::WeaponView<'_>) -> WeaponBodyFa
         explosion_radius_min: w.def_i32(d::EXPLOSION_RADIUS_MIN),
         explosion_inner_damage: w.def_i32(d::EXPLOSION_INNER_DAMAGE),
         explosion_outer_damage: w.def_i32(d::EXPLOSION_OUTER_DAMAGE),
+        damage_cone_angle: w.def_f32(d::DAMAGE_CONE_ANGLE),
         projectile_speed: w.def_i32(d::PROJECTILE_SPEED),
         projectile_speed_up: w.def_i32(d::PROJECTILE_SPEED_UP),
+        projectile_speed_relative_up: w.def_i32(d::PROJECTILE_SPEED_RELATIVE_UP),
+        projectile_speed_forward: w.def_i32(d::PROJECTILE_SPEED_FORWARD),
         projectile_activate_dist: w.def_i32(d::PROJECTILE_ACTIVATE_DIST),
         projectile_explosion_type: w.def_i32(d::PROJ_EXPLOSION),
         proj_impact_explode: w.def_bool(d::PROJ_IMPACT_EXPLODE),
         stickiness: w.def_i32(d::STICKINESS),
         timed_detonation: w.def_bool(d::TIMED_DETONATION),
+        has_detonator: w.def_bool(d::HAS_DETONATOR),
+        refuses_pickup: !w.def_bool(d::RETRIEVABLE),
+        detonate_delay_ms: w.def_i32(d::DETONATE_DELAY),
+        detonate_time_ms: w.def_i32(d::DETONATE_TIME),
         offhand_class: leftover_t5_offhand_class(w.def_i32(d::OFFHAND_CLASS)),
         hold_fire_time_ms: w.def_i32(d::HOLD_FIRE_TIME),
         fuse_time_ms: w.def_i32(d::FUSE_TIME),
@@ -6653,6 +6666,20 @@ impl WeaponBuild {
             // its stand-in is (IW4's tactical insertion is equipment).
             if crate::weapon_t6::is_tactical_equipment(&own.name) {
                 facts.offhand_class = OFFHAND_CLASS_SMOKE;
+            }
+            // The claymore's laser is the stand-in's, not a bouncing betty's
+            // or a trophy system's.
+            if crate::weapon_t6::sheds_stand_in_trail(&own.name) {
+                dressed.proj_trail = None;
+                dressed.proj_beacon = None;
+            }
+            // T6's sensor grenade stays where it lands, sensing, until it is
+            // destroyed (its fuse only pings again, `iw4l_t6/equipment`).
+            if crate::weapon_t6::stays_planted(&own.name) {
+                facts.timed_detonation = false;
+                if facts.stickiness == 0 {
+                    facts.stickiness = 3;
+                }
             }
             // A T6 riot shield bashes with the fire button.
             facts.fire_melees = facts.weap_type == weapon_iw4::WEAPTYPE_SHIELD;

@@ -42,7 +42,7 @@ pub(crate) fn player_damage(world: &mut World, tick: crate::Tick, hit: &crate::s
         Some(attacker) if attacker != Value::Undefined => attacker,
         _ => world_entity(world),
     };
-    let weapon = script_weapon(world, hit.attacker.map_or(u32::MAX, |a| a.0), hit.weapon);
+    let weapon = event_weapon(world, hit.attacker.map_or(u32::MAX, |a| a.0), hit.weapon);
     let weapon = crate::script_player::weapon_name(&FrameWorld::from_world(world), weapon);
     let hitloc = weapon_iw4::HITLOC_NAMES
         .get(usize::from(hit.hitloc))
@@ -445,6 +445,29 @@ fn bridge_offhand(world: &mut World, client: u32, weapon: u32) {
     bridge.push((stand_in, weapon));
 }
 
+/// T6 equipment IW4 has nothing like: the stand-in only carries it through
+/// the class script, and its throws and hits keep its own name for the T6
+/// equipment script (`iw4l_t6/equipment`) to run it as T6 does.
+const OWN_T6_EQUIPMENT: [&str; 5] = [
+    "bouncingbetty_mp",
+    "trophy_system_mp",
+    "sensor_grenade_mp",
+    "emp_grenade_mp",
+    "proximity_grenade_mp",
+];
+
+/// The weapon a throw or a hit is reported to the scripts as: the
+/// stand-in, or T6 equipment of its own under its own name.
+pub(crate) fn event_weapon(world: &mut World, client: u32, weapon: u32) -> u32 {
+    let script = script_weapon(world, client, weapon);
+    let frame = FrameWorld::from_world(world);
+    if script != weapon && OWN_T6_EQUIPMENT.contains(&frame.weapon_script_name(weapon)) {
+        weapon
+    } else {
+        script
+    }
+}
+
 /// IW4's tactical insertion, which its class script gives only as
 /// equipment (the `specialty_tacticalinsertion` perk).
 const INSERTION: &str = "flare_mp";
@@ -593,6 +616,31 @@ fn bridge_insertion_carrier(world: &mut World, client: u32, weapon: u32) {
     bridge.push((carrier, weapon));
 }
 
+/// Tells the T6 equipment script which offhands, by the names the class
+/// script gives them under, are T6 equipment (`t6lethal`, `t6tactical`).
+fn mark_t6_offhands(world: &mut World, client: u32, class: &crate::ClassDef) {
+    let given = |world: &mut World, weapon: u32, tactical: bool| -> Value {
+        let Some(stand_in) = offhand_stand_in(world, weapon) else {
+            return Value::Undefined;
+        };
+        let frame = FrameWorld::from_world(world);
+        let name = frame.weapon_script_name(stand_in);
+        Value::string(if tactical && name == INSERTION {
+            INSERTION_CARRIER
+        } else {
+            name
+        })
+    };
+    let lethal = given(world, class.lethal, false);
+    let tactical = given(world, class.tactical, true);
+    let Value::Object(player) = player_object(world, client) else {
+        return;
+    };
+    let mut runtime = world.resource_mut::<Runtime>();
+    runtime.set_object_field(player, "t6lethal", lethal);
+    runtime.set_object_field(player, "t6tactical", tactical);
+}
+
 /// When the class script gives a tactical insertion's carrier, the perk
 /// that plants it is given as well: the class script never gives it
 /// beside a lethal.
@@ -678,17 +726,20 @@ pub(crate) fn choose_class(world: &mut World, client: u32, class: &crate::ClassD
         .remove(&client);
     bridge_class_weapon(world, client, 0, class.primary);
     bridge_class_weapon(world, client, 1, class.secondary);
-    bridge_class_weapon(world, client, 2, class.lethal);
-    bridge_class_weapon(world, client, 3, class.tactical);
     if realm == Some(crate::script::Realm::T5) {
+        bridge_class_weapon(world, client, 2, class.lethal);
+        bridge_class_weapon(world, client, 3, class.tactical);
         if let Some(response) = t5_class_response(class.id) {
             answer_menu(world, client, CLASS_MENU, &response);
         }
         return;
     }
+    // IW4's offhands are bridged by name: a fixed stand-in bridged ahead of
+    // them would hand the scripts a flash for a tactical insertion.
     bridge_offhand(world, client, class.lethal);
     bridge_offhand(world, client, class.tactical);
     bridge_insertion_carrier(world, client, class.tactical);
+    mark_t6_offhands(world, client, class);
     let data = class_profile_data(world, class);
     push_answer(
         world,

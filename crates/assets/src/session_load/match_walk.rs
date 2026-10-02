@@ -237,6 +237,10 @@ pub(super) async fn walk_prepared_match(
     };
     let mut scripts = iw4_scripts;
     scripts.overlay(map_scripts);
+    scripts.insert_source(
+        "iw4l_t6/equipment",
+        crate::map_scripts::T6_EQUIPMENT.to_owned(),
+    );
     report.push(format!(
         "GSC source assets: {} (map overrides common_mp)",
         scripts.len()

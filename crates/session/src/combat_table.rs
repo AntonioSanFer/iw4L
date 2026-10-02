@@ -276,6 +276,8 @@ pub fn equipment_from_registry(weapons: &WeaponRegistry) -> Vec<sim::EquipmentRu
                 projectile_speed: f.projectile_speed,
                 projectile_speed_up: f.projectile_speed_up,
                 projectile_speed_forward: f.projectile_speed_forward,
+                projectile_speed_relative_up: f.projectile_speed_relative_up,
+                refuses_pickup: f.refuses_pickup,
                 projectile_activate_dist: f.projectile_activate_dist,
                 projectile_explosion_type: f.projectile_explosion_type,
                 weap_type: f.weap_type,

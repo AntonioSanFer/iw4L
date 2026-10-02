@@ -3134,6 +3134,7 @@ fn encode_objectives(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
         }
         out.put_u8(objective.team as u8);
         put_text(out, &objective.icon);
+        out.put_i32(objective.viewer.map_or(-1, |viewer| viewer as i32));
     }
     debug_assert!(state.server_info.len() <= u16::MAX as usize);
     out.put_u16(state.server_info.len() as u16);
@@ -3222,12 +3223,14 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
         let team = gamemode_iw4::Team::from_packed_u8(input.get_u8()?)
             .ok_or(WireError::Malformed("objective team"))?;
         let icon = get_text(input)?;
+        let viewer = u32::try_from(input.get_i32()?).ok();
         state.compass.push(sim::CompassObjective {
             index,
             state: objective_state,
             origin,
             team,
             icon,
+            viewer,
         });
     }
     let count = input.get_u16()?;

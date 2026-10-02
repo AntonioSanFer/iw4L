@@ -105,11 +105,13 @@ pub mod def {
     pub const FIRE_DELAY: u32 = 1072;
     pub const MELEE_DELAY: u32 = 1076;
     pub const MELEE_CHARGE_DELAY: u32 = 1080;
+    pub const DETONATE_DELAY: u32 = 1084;
     pub const FIRE_TIME: u32 = 1128;
     pub const LAST_FIRE_TIME: u32 = 1132;
     pub const RECHAMBER_TIME: u32 = 1136;
     pub const RECHAMBER_BOLT_TIME: u32 = 1140;
     pub const HOLD_FIRE_TIME: u32 = 1144;
+    pub const DETONATE_TIME: u32 = 1148;
     pub const MELEE_TIME: u32 = 1152;
     pub const BURST_DELAY_TIME: u32 = 1156;
     pub const MELEE_CHARGE_TIME: u32 = 1160;
@@ -167,8 +169,13 @@ pub mod def {
     pub const EXPLOSION_RADIUS_MIN: u32 = 1712;
     pub const EXPLOSION_INNER_DAMAGE: u32 = 1720;
     pub const EXPLOSION_OUTER_DAMAGE: u32 = 1724;
+    pub const DAMAGE_CONE_ANGLE: u32 = 1728;
     pub const PROJECTILE_SPEED: u32 = 1732;
     pub const PROJECTILE_SPEED_UP: u32 = 1736;
+    /// Upward along the thrower's view rather than the world: T6 grenades
+    /// arc with this, their world-up speed is 0.
+    pub const PROJECTILE_SPEED_RELATIVE_UP: u32 = 1740;
+    pub const PROJECTILE_SPEED_FORWARD: u32 = 1744;
     pub const PROJECTILE_ACTIVATE_DIST: u32 = 1752;
     pub const PROJECTILE_MODEL: u32 = 1768;
     pub const PROJ_EXPLOSION: u32 = 1772;

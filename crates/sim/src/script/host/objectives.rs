@@ -16,6 +16,7 @@ pub(crate) struct ScriptObjective {
     entity: Option<Value>,
     team: Team,
     icon: String,
+    viewer: Option<u32>,
 }
 
 impl ScriptObjective {
@@ -109,13 +110,26 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     });
     registry.register(Function, "objective_team", |world, _, args| {
         let index = index(args)?;
+        // Given a player instead of a team, it shows to that player alone
+        // (IW4 has no such form; the T6 equipment script needs it in FFA).
+        if let Some(client) = world
+            .resource::<Runtime>()
+            .player_client_of(arg(args, 1)?)
+        {
+            let mut objective = objective(world, index);
+            objective.team = Team::Free;
+            objective.viewer = Some(client);
+            return Ok(Value::Undefined);
+        }
         let team = match string(args, 1)?.as_str() {
             "axis" => Team::Axis,
             "allies" => Team::Allies,
             "none" | "free" | "neutral" => Team::Free,
             other => return Err(format!("'{other}' is an illegal team string")),
         };
-        objective(world, index).team = team;
+        let mut objective = objective(world, index);
+        objective.team = team;
+        objective.viewer = None;
         Ok(Value::Undefined)
     });
 }
@@ -147,6 +161,7 @@ pub(crate) fn publish(world: &mut World) {
             origin,
             team: row.team,
             icon: row.icon,
+            viewer: row.viewer,
         });
     }
     let runtime = world.resource::<Runtime>();
