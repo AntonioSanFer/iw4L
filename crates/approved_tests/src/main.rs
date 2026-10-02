@@ -1,6 +1,8 @@
 //! The owner-approved end-to-end scenarios; see README.md.
 
 mod report;
+#[cfg(test)]
+mod resource_reads;
 mod runner;
 mod scenario;
 mod scenarios {
@@ -76,7 +78,7 @@ fn parse_args(root: &Path) -> Result<Args, String> {
         seed: None,
         replay: None,
         cache: CacheMode::Cold,
-        bin: root.join("target/play/iw4l"),
+        bin: root.join(format!("target/play/iw4l{}", std::env::consts::EXE_SUFFIX)),
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} needs a value"));
@@ -289,6 +291,7 @@ fn run(root: &Path, args: &Args) -> Result<bool, String> {
     let phases = hgl::phases(&map_b, &scenes_a, &scenes_b);
     let script = scenario::script(&phases);
     let child_args = vec![
+        "--cheats".to_owned(),
         "map".to_owned(),
         SCENARIO.map_a.to_owned(),
         "--cmds".to_owned(),

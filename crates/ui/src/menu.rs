@@ -57,7 +57,39 @@ pub fn install_frontend_menus(catalog: &mut asset_game::MenuCatalog) -> Result<(
     catalog.load_definitions(include_str!("../menus/classes.json"))?;
     catalog.load_definitions(include_str!("../menus/settings.json"))?;
     catalog.load_definitions(include_str!("../menus/controller.json"))?;
+    let slider = catalog
+        .get("pc_options_video")
+        .and_then(|menu| {
+            menu.items
+                .iter()
+                .find(|item| item.name == "video_brightness")
+        })
+        .cloned();
     for (name, menu) in &mut catalog.menus {
+        if name == "pc_options_look"
+            && let Some(template) = &slider
+            && let Some(y) = menu
+                .items
+                .iter()
+                .find(|item| item.text_key == "@MENU_MOUSE_SENSITIVITY")
+                .map(|label| label.rect.y)
+            && let Some(item) = menu.items.iter_mut().find(|item| item.item_type == 10)
+        {
+            *item = asset_game::MenuItem {
+                name: "look_sensitivity".into(),
+                dvar: "ui_sensitivity".into(),
+                slider: Some(asset_game::MenuSlider {
+                    min: 0.1,
+                    max: 30.0,
+                    step: 0.1,
+                    display_range: None,
+                    decimals: 1,
+                    suffix: String::new(),
+                }),
+                ..template.clone()
+            };
+            item.rect.y = y;
+        }
         if matches!(name.as_str(), "popup_endgame" | "popup_endgame_ranked") {
             for item in &mut menu.items {
                 if item.name == "button_yes" {

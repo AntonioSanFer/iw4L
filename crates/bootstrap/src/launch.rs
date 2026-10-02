@@ -124,6 +124,7 @@ pub fn launch(
     artifacts: PathBuf,
     mode: LaunchMode,
     acceptance: Option<AcceptanceLaunch>,
+    cheats: sim::HostCheats,
 ) {
     diag::info!(Launch, "{}", asset_transport::games_root_report(&games));
 
@@ -145,10 +146,20 @@ pub fn launch(
                     render::diag::acceptance::ACCEPTANCE_MAPS.join(", ")
                 ));
             }
-            run_menu(games, artifacts);
+            run_menu(games, artifacts, cheats);
         }
-        LaunchMode::Map(zone) => run_map(games, artifacts, zone, acceptance, Role::Listen, None),
-        LaunchMode::Serve(zone) => run_map(games, artifacts, zone, None, Role::Dedicated, None),
+        LaunchMode::Map(zone) => run_map(
+            games,
+            artifacts,
+            zone,
+            acceptance,
+            Role::Listen,
+            None,
+            cheats,
+        ),
+        LaunchMode::Serve(zone) => {
+            run_map(games, artifacts, zone, None, Role::Dedicated, None, cheats)
+        }
         LaunchMode::ExportGltf(zone) => {
             if acceptance.is_some() {
                 fatal("render acceptance is not available for export-gltf");
@@ -195,7 +206,7 @@ fn run_export_gltf(games: asset_transport::GamesRoot, artifacts: PathBuf, zone_a
     diag::announce_stdout(&summary.report_line());
 }
 
-fn run_menu(games: asset_transport::GamesRoot, artifacts: PathBuf) {
+fn run_menu(games: asset_transport::GamesRoot, artifacts: PathBuf, cheats: sim::HostCheats) {
     start_perf(None, "menu");
     let ui_games = asset_game::ui_games_root(&games).unwrap_or_else(|error| {
         let content = asset_transport::games_content_report(&games).join("\n");
@@ -315,6 +326,7 @@ fn run_menu(games: asset_transport::GamesRoot, artifacts: PathBuf) {
         });
     }
     app.insert_resource(launch_identity(&config))
+        .insert_resource(cheats)
         .insert_resource(MenuMapList(maps))
         .insert_resource(AppScreen::MainMenu)
         .insert_resource(UiAssetRoot(Some(ui_games.0)))
@@ -365,7 +377,15 @@ fn run_play(
         });
     diag::info!(Launch, "play: {} zone={zone}", playback.path().display());
     let session = ReplayPlayback::new(playback);
-    run_map(games, artifacts, zone, None, Role::Replay, Some(session));
+    run_map(
+        games,
+        artifacts,
+        zone,
+        None,
+        Role::Replay,
+        Some(session),
+        sim::HostCheats::default(),
+    );
 }
 
 fn run_map(
@@ -375,6 +395,7 @@ fn run_map(
     acceptance: Option<AcceptanceLaunch>,
     role: Role,
     playback: Option<ReplayPlayback>,
+    cheats: sim::HostCheats,
 ) {
     let found = find_zone_file(&games, &zone_arg);
     let zone_alias = found.as_ref().ok().and_then(|z| z.alias_note.clone());
@@ -484,6 +505,7 @@ fn run_map(
     }
     let ui_games_root = asset_game::ui_games_root(&games).ok().map(|root| root.0);
     app.insert_resource(launch_identity(&config))
+        .insert_resource(cheats)
         .insert_resource(probe)
         .insert_resource(menus)
         .insert_resource(MatchLoadRequest {
