@@ -5,9 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy::prelude::*;
 use frame::LaunchIdentity;
-use net::{
-    AuthorityClock, AuthorityWorld, PresentedSnapshot,
-};
+use net::{AuthorityClock, AuthorityWorld, PresentedSnapshot};
 
 use crate::ConsoleCommand;
 
@@ -60,7 +58,6 @@ pub(crate) fn route_state_dump_commands(
         }
     }
 }
-
 
 fn parse_state_dump_name(args: &[String]) -> Result<String, String> {
     let raw = match args {
@@ -248,4 +245,3 @@ pub(super) fn persist_bytes_atomic(path: &Path, body: &str) -> Result<(), String
     }
     result
 }
-

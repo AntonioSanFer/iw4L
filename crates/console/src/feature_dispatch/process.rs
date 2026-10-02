@@ -1,11 +1,7 @@
 use std::io::Write;
 
 use bevy::prelude::*;
-use net::{
-    MasterBridge,
-    MasterBridgeState,
-};
-
+use net::{MasterBridge, MasterBridgeState};
 
 const LEAVE_BUDGET: std::time::Duration = std::time::Duration::from_millis(250);
 
@@ -52,15 +48,10 @@ pub(crate) fn exit_process(world: &mut World) {
 }
 
 fn silence_audio(world: &mut World) {
-    use bevy::audio::{AudioSink, AudioSinkPlayback, SpatialAudioSink, Volume};
-    let mut sinks = world.query::<&mut AudioSink>();
-    for mut sink in sinks.iter_mut(world) {
-        sink.set_volume(Volume::Linear(0.0));
-    }
-    let mut spatial = world.query::<&mut SpatialAudioSink>();
-    for mut sink in spatial.iter_mut(world) {
-        sink.set_volume(Volume::Linear(0.0));
-    }
+    let Some(audio) = world.get_resource::<audio::AudioRuntime>() else {
+        return;
+    };
+    audio.set_master_volume(0.0);
     std::thread::sleep(AUDIO_FADE);
 }
 
@@ -87,4 +78,3 @@ fn leave_master(bridge: &MasterBridge) {
         LEAVE_BUDGET.as_millis()
     );
 }
-

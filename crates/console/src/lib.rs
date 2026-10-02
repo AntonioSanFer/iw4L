@@ -1,3 +1,4 @@
+mod barracks_menu;
 pub mod binds;
 mod class_dispatch;
 mod class_menu;
@@ -27,6 +28,8 @@ mod game_folders;
 mod saved_position;
 mod gamepad;
 pub mod input;
+mod local_account;
+mod local_profile;
 pub mod plugin;
 pub mod registry;
 mod startup;

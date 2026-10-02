@@ -229,10 +229,12 @@ pub(crate) struct CommonWalkSink {
     xmodel_surface_names: HashMap<Ptr, Ptr>,
     strings_t5: fastfile_t5::ScriptStrings,
     xmodel_names_t5: HashMap<fastfile_t5::Ptr, fastfile_t5::Ptr>,
+    material_names_t5: HashMap<fastfile_t5::Ptr, fastfile_t5::Ptr>,
     strings_iw5: fastfile_iw5::ScriptStrings,
     iw5_surfaces:
         HashMap<fastfile_iw5::Ptr, (Option<fastfile_iw5::Ptr>, Option<fastfile_iw5::Ptr>)>,
     xmodel_names_iw5: HashMap<fastfile_iw5::Ptr, fastfile_iw5::Ptr>,
+    material_names_iw5: HashMap<fastfile_iw5::Ptr, fastfile_iw5::Ptr>,
     fx_names_iw5: HashMap<fastfile_iw5::Ptr, String>,
     fx_aliases_iw5: HashMap<fastfile_iw5::Ptr, fastfile_iw5::Ptr>,
     last_fx_name_iw5: Option<String>,
@@ -653,12 +655,35 @@ impl fastfile_iw5::AssetLinkSink for CommonWalkSink {
         if ty == fastfile_iw5::AssetType::Fx {
             self.fx_aliases_iw5.insert(slot, target);
         }
+        if ty == fastfile_iw5::AssetType::Material {
+            if let Some(&name) = self.material_names_iw5.get(&target) {
+                self.material_names_iw5.insert(slot, name);
+            } else {
+                self.material_names_iw5.remove(&slot);
+            }
+        }
         if ty == fastfile_iw5::AssetType::XModel {
             if let Some(&name) = self.xmodel_names_iw5.get(&target) {
                 self.xmodel_names_iw5.insert(slot, name);
             }
         }
         Ok(())
+    }
+
+    fn remember_material_name(
+        &mut self,
+        slot: fastfile_iw5::Ptr,
+        insert_slot: Option<fastfile_iw5::Ptr>,
+        name: fastfile_iw5::Ptr,
+    ) {
+        self.material_names_iw5.insert(slot, name);
+        if let Some(insert_slot) = insert_slot {
+            self.material_names_iw5.insert(insert_slot, name);
+        }
+    }
+
+    fn material_name_ptr(&self, slot: fastfile_iw5::Ptr) -> Option<fastfile_iw5::Ptr> {
+        self.material_names_iw5.get(&slot).copied()
     }
 
     fn remember_xmodel_name(
@@ -783,12 +808,35 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
         if ty == fastfile_t5::AssetType::Fx {
             self.fx.note_alias(t5_iw4_ptr(slot), t5_iw4_ptr(target));
         }
+        if ty == fastfile_t5::AssetType::Material {
+            if let Some(&name) = self.material_names_t5.get(&target) {
+                self.material_names_t5.insert(slot, name);
+            } else {
+                self.material_names_t5.remove(&slot);
+            }
+        }
         if ty == fastfile_t5::AssetType::XModel {
             if let Some(&name) = self.xmodel_names_t5.get(&target) {
                 self.xmodel_names_t5.insert(slot, name);
             }
         }
         Ok(())
+    }
+
+    fn remember_material_name(
+        &mut self,
+        slot: fastfile_t5::Ptr,
+        insert_slot: Option<fastfile_t5::Ptr>,
+        name: fastfile_t5::Ptr,
+    ) {
+        self.material_names_t5.insert(slot, name);
+        if let Some(insert_slot) = insert_slot {
+            self.material_names_t5.insert(insert_slot, name);
+        }
+    }
+
+    fn material_name_ptr(&self, slot: fastfile_t5::Ptr) -> Option<fastfile_t5::Ptr> {
+        self.material_names_t5.get(&slot).copied()
     }
 
     fn remember_xmodel_name(
@@ -1132,6 +1180,14 @@ impl AssetLinkSink for ZoneWalkSink {
         if let Some(sound) = self.sound.as_mut() {
             sound.iw4_loaded(stream, ty, slot, insert_slot);
         }
+        if ty == AssetType::StructuredDataDef
+            && let Some(header) = stream.structured_data_def_set()
+        {
+            match asset_game::structured_data::capture_iw4_structured_data_def_set(stream, header) {
+                Ok((name, schema)) => self.scripts.capture_schema(name, schema),
+                Err(error) => diag::warn!(World, "structured-data capture: {error}"),
+            }
+        }
         self.materials.loaded(stream, ty, slot, insert_slot)?;
         if ty == AssetType::Fx {
             self.fx.note_loaded(slot, insert_slot);
@@ -1355,6 +1411,14 @@ impl AssetLinkSink for CommonWalkSink {
         if let Some(sound) = self.sound.as_mut() {
             sound.iw4_loaded(stream, ty, slot, insert_slot);
         }
+        if ty == AssetType::StructuredDataDef
+            && let Some(header) = stream.structured_data_def_set()
+        {
+            match asset_game::structured_data::capture_iw4_structured_data_def_set(stream, header) {
+                Ok((name, schema)) => self.scripts.capture_schema(name, schema),
+                Err(error) => diag::warn!(World, "structured-data capture: {error}"),
+            }
+        }
         self.materials.loaded(stream, ty, slot, insert_slot)?;
         if ty == AssetType::Weapon {
             self.weapons.capture(stream);
@@ -1372,19 +1436,25 @@ impl AssetLinkSink for CommonWalkSink {
             if let Some(geometry) = stream.xmodel()
                 && let Some(name) = geometry.name.and_then(|p| stream.cstr(p).ok())
             {
-                let asset = asset_model::capture_xmodel_skel(
+                let skel = asset_model::capture_xmodel_skel(
                     stream,
                     &self.script_strings,
                     geometry,
                     Some(&self.materials),
                 )
-                .map(|skel| asset_world::MapXModelSceneAsset::Iw4(std::sync::Arc::new(skel)))
-                .unwrap_or(asset_world::MapXModelSceneAsset::Unavailable {
-                    reason: "common XModel skeleton capture failed",
-                });
-                if let asset_world::MapXModelSceneAsset::Iw4(skel) = &asset {
+                .map(std::sync::Arc::new);
+                // One decode for the scene catalog and the FX catalog: each is
+                // pruned only after the map walk, so separate copies of every
+                // common_mp XModel would both be live at the load's peak.
+                if let Some(skel) = &skel {
                     self.shared_surfaces.retain(stream, geometry, skel.clone());
+                    self.fx_models.capture_shared(skel.clone(), &self.materials);
                 }
+                let asset = skel.map(asset_world::MapXModelSceneAsset::Iw4).unwrap_or(
+                    asset_world::MapXModelSceneAsset::Unavailable {
+                        reason: "common XModel skeleton capture failed",
+                    },
+                );
                 self.scene_models
                     .insert(asset_world::MapXModelAssetKey(name.to_owned()), asset);
             }
@@ -1393,7 +1463,6 @@ impl AssetLinkSink for CommonWalkSink {
             self.projectile_meshes
                 .capture_unclassified(stream, &self.materials);
             self.models.capture(stream);
-            self.fx_models.capture(stream, &self.materials);
         }
         Ok(())
     }
@@ -1607,6 +1676,14 @@ impl AssetLinkSink for MaterialPopulationSink {
     ) -> fastfile_iw4::Result<()> {
         if let Some(sound) = self.sound.as_mut() {
             sound.iw4_loaded(stream, ty, slot, insert_slot);
+        }
+        if ty == AssetType::StructuredDataDef
+            && let Some(header) = stream.structured_data_def_set()
+        {
+            match asset_game::structured_data::capture_iw4_structured_data_def_set(stream, header) {
+                Ok((name, schema)) => self.scripts.capture_schema(name, schema),
+                Err(error) => diag::warn!(World, "structured-data capture: {error}"),
+            }
         }
         self.materials.loaded(stream, ty, slot, insert_slot)
     }

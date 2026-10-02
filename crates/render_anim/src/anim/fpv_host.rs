@@ -27,8 +27,7 @@ pub struct PendingFpvSpawnRequest {
 
 #[derive(Resource, Default)]
 pub struct PendingFpvNotetracks {
-    pub weapon: u32,
-    pub names: Vec<String>,
+    pub batch: Option<audio::ViewmodelNotetracks>,
 }
 
 #[derive(Resource, Default)]
@@ -98,7 +97,6 @@ pub struct FpvPosedFrame {
     pub poses: [Option<FpvHandPose>; 2],
     pub lens: Mat4,
     pub idle_sampled: bool,
-    pub notetracks: Vec<String>,
 }
 
 #[derive(Resource, Default)]
@@ -123,7 +121,9 @@ pub struct FpvGenerateArgs<'a> {
     pub dual_offset: Option<f32>,
 }
 
-pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
+pub fn generate_fpv_pose(
+    args: FpvGenerateArgs<'_>,
+) -> (FpvPoseKind, crate::anim::fpv::FpvNotetracks) {
     let FpvGenerateArgs {
         dt,
         equipped,
@@ -141,6 +141,20 @@ pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
     let (_pose, notifies) =
         tick_equipped_fpv_with_predicted_fire(equipped, cursor, sample, predicted_fire, dt);
 
+    let kind = pose_equipped_fpv(equipped, rigs, active, rocket, melee, ads, dual, dual_offset);
+    (kind, notifies)
+}
+
+fn pose_equipped_fpv(
+    equipped: &EquippedFpv,
+    rigs: &FpvRigSet,
+    active: &mut Option<Arc<PreparedFpvRig>>,
+    rocket: bool,
+    melee: bool,
+    ads: bool,
+    dual: bool,
+    dual_offset: Option<f32>,
+) -> FpvPoseKind {
     let right: Vec<PosedClip<'_>> = equipped
         .controller
         .active_anims()
@@ -204,8 +218,6 @@ pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
                 ))
             })
             .unwrap_or(Vec3::ZERO);
-        // The rig laid out a left hand, so a left hand that cannot be posed is
-        // a plan with a hole in it. Refusing the frame is the honest answer.
         let Some(pose) = prepared.pose_hand(1, &left, offset) else {
             return FpvPoseKind::Refuse(FpvPoseRefuse::EyePoseFailed {
                 gun_xmodel: equipped.gun_xmodel.clone(),
@@ -223,6 +235,5 @@ pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
         secondary_bolt,
         lens,
         idle_sampled: true,
-        notetracks: notifies,
     })
 }

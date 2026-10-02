@@ -6,6 +6,7 @@ license.workspace = true
 description = "Our console: input, parsing, execution, cvar storage, coverage report."
 
 [dependencies]
+getrandom = "0.3"
 master_protocol.workspace = true
 diag.workspace = true
 bevy.workspace = true

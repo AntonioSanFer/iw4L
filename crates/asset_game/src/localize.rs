@@ -9,7 +9,9 @@ use crate::{ZoneGame, ZoneMemory, open_zone};
 #[derive(Clone, Debug, Default, Resource)]
 pub struct LocalizeCatalog {
     entries: HashMap<String, String>,
+    raw_entries: HashMap<String, Vec<u8>>,
     by_namespace: HashMap<(asset_core::AssetNamespace, String), String>,
+    raw_by_namespace: HashMap<(asset_core::AssetNamespace, String), Vec<u8>>,
 }
 
 impl LocalizeCatalog {
@@ -36,6 +38,19 @@ impl LocalizeCatalog {
             .map(String::as_str)
     }
 
+    pub fn raw_text(&self, key: &str) -> Option<&[u8]> {
+        self.raw_entries.get(&key.to_uppercase()).map(Vec::as_slice)
+    }
+
+    pub fn raw_text_asset(&self, key: &asset_core::AssetKey) -> Option<&[u8]> {
+        if key.kind != asset_core::AssetKind::Localize {
+            return None;
+        }
+        self.raw_by_namespace
+            .get(&(key.namespace, key.name.to_uppercase()))
+            .map(Vec::as_slice)
+    }
+
     pub fn text_asset(&self, key: &asset_core::AssetKey) -> Option<&str> {
         if key.kind != asset_core::AssetKind::Localize {
             return None;
@@ -55,6 +70,11 @@ impl LocalizeCatalog {
                 .entry((namespace, name.clone()))
                 .or_insert_with(|| text.clone());
         }
+        for (name, bytes) in &other.raw_entries {
+            self.raw_by_namespace
+                .entry((namespace, name.clone()))
+                .or_insert_with(|| bytes.clone());
+        }
         self.absorb(other);
     }
 
@@ -72,18 +92,25 @@ impl LocalizeCatalog {
 
     pub fn absorb(&mut self, other: LocalizeCatalog) {
         self.by_namespace.extend(other.by_namespace);
+        self.raw_by_namespace.extend(other.raw_by_namespace);
+        for (key, bytes) in other.raw_entries {
+            self.raw_entries.entry(key).or_insert(bytes);
+        }
         for (k, v) in other.entries {
             self.entries.entry(k).or_insert(v);
         }
     }
 
-    fn insert(&mut self, name: &str, value: &str) {
+    fn insert_bytes(&mut self, name: &str, value: &[u8]) {
         if name.is_empty() {
             return;
         }
         self.entries
             .entry(name.to_uppercase())
-            .or_insert_with(|| value.to_owned());
+            .or_insert_with(|| decode_localized_text(value));
+        self.raw_entries
+            .entry(name.to_uppercase())
+            .or_insert_with(|| value.to_vec());
     }
 }
 
@@ -139,7 +166,7 @@ impl AssetLinkSink for LocalizeSink {
     }
 
     fn capture_localize(&mut self, name: &str, value: &[u8]) -> ZoneResult<()> {
-        self.catalog.insert(name, &decode_localized_text(value));
+        self.catalog.insert_bytes(name, value);
         Ok(())
     }
 
@@ -279,10 +306,7 @@ pub fn load_localize_catalog_t6(path: &Path) -> Result<LocalizeCatalog, String> 
             continue;
         }
         if let (Some(value), Some(name)) = (text(0, &asset.header), text(4, &asset.header)) {
-            catalog.insert(
-                &String::from_utf8_lossy(name),
-                &decode_localized_text(value),
-            );
+            catalog.insert_bytes(&String::from_utf8_lossy(name), value);
         }
     }
     if let Err(e) = walked {
@@ -296,7 +320,7 @@ pub fn load_localize_catalog_t6(path: &Path) -> Result<LocalizeCatalog, String> 
     Ok(catalog)
 }
 
-const LOCALIZE_CACHE_FORMAT: u32 = 1;
+const LOCALIZE_CACHE_FORMAT: u32 = 3;
 const LOCALIZE_CACHE_MAGIC: u32 = 0x4c_4f_43_31;
 
 fn localize_cache_key(path: &Path) -> Option<String> {
@@ -326,6 +350,9 @@ impl LocalizeCatalog {
             out.extend_from_slice(key.as_bytes());
             out.extend_from_slice(&(text.len() as u32).to_le_bytes());
             out.extend_from_slice(text.as_bytes());
+            let raw = self.raw_entries.get(key).map(Vec::as_slice).unwrap_or(&[]);
+            out.extend_from_slice(&(raw.len() as u32).to_le_bytes());
+            out.extend_from_slice(raw);
         }
         out
     }
@@ -342,7 +369,11 @@ impl LocalizeCatalog {
             return None;
         }
         let count = word(&mut at)? as usize;
+        if count > blob.len().saturating_sub(at) / 12 {
+            return None;
+        }
         let mut entries = HashMap::with_capacity(count);
+        let mut raw_entries = HashMap::with_capacity(count);
         for _ in 0..count {
             let key_len = word(&mut at)? as usize;
             let key_end = at.checked_add(key_len)?;
@@ -354,10 +385,19 @@ impl LocalizeCatalog {
                 .ok()?
                 .to_owned();
             at = text_end;
+            let raw_len = word(&mut at)? as usize;
+            let raw_end = at.checked_add(raw_len)?;
+            let raw = blob.get(at..raw_end)?.to_vec();
+            at = raw_end;
+            if decode_localized_text(&raw) != text {
+                return None;
+            }
+            raw_entries.insert(key.clone(), raw);
             entries.insert(key, text);
         }
         (at == blob.len() && entries.len() == count).then_some(Self {
             entries,
+            raw_entries,
             ..Default::default()
         })
     }
@@ -427,7 +467,7 @@ impl fastfile_iw5::AssetLinkSink for Iw5LocalizeSink {
     }
 
     fn capture_localize(&mut self, name: &str, value: &[u8]) -> fastfile_iw5::Result<()> {
-        self.catalog.insert(name, &decode_localized_text(value));
+        self.catalog.insert_bytes(name, value);
         Ok(())
     }
 
@@ -490,7 +530,7 @@ impl fastfile_t5::AssetLinkSink for T5LocalizeSink {
     }
 
     fn capture_localize(&mut self, name: &str, value: &[u8]) -> fastfile_t5::Result<()> {
-        self.catalog.insert(name, &decode_localized_text(value));
+        self.catalog.insert_bytes(name, value);
         Ok(())
     }
 
