@@ -110,11 +110,55 @@ pub fn planted_model(name: &str) -> Option<&'static str> {
         .map(|(_, model)| *model)
 }
 
-/// The T6 effects IW4 matches play: the tactical insertion's light, team
-/// colour and enemy colour.
+/// The T6 effects IW4 matches play: T6 equipment's (lights in team colour
+/// and enemy colour, bursts, flashes), played by the engine and by
+/// `iw4l_t6/equipment`.
 pub const T6_EFFECTS: &[&str] = &[
     "misc/fx_equip_tac_insert_light_grn",
     "misc/fx_equip_tac_insert_light_red",
+    "misc/fx_equip_tac_insert_exp",
+    "weapon/bouncing_betty/fx_betty_explosion",
+    "weapon/bouncing_betty/fx_betty_destroyed",
+    "weapon/bouncing_betty/fx_betty_launch_dust",
+    "weapon/bouncing_betty/fx_betty_light_green",
+    "weapon/bouncing_betty/fx_betty_light_red",
+    "weapon/trophy_system/fx_trophy_flash_lng",
+    "weapon/trophy_system/fx_trophy_radius_detonation",
+    "weapon/trophy_system/fx_trophy_light_friendly",
+    "weapon/trophy_system/fx_trophy_light_enemy",
+    "weapon/trophy_system/fx_trophy_deploy_impact",
+    "weapon/grenade/fx_prox_grenade_scan_grn",
+    "weapon/grenade/fx_prox_grenade_scan_red",
+    "weapon/grenade/fx_prox_grenade_wrn_grn",
+    "weapon/grenade/fx_prox_grenade_wrn_red",
+    "weapon/grenade/fx_prox_grenade_impact_player_spwner",
+    "weapon/grenade/fx_spark_disabled_weapon",
+    "weapon/c4/fx_c4_light_green",
+    "weapon/c4/fx_c4_light_red",
+    "weapon/emp/fx_emp_explosion_equip",
+    "explosions/fx_exp_equipment",
+    "explosions/fx_exp_equipment_lg",
+    // T6 weapons' own explosion effects (`projExplosionEffect`).
+    "explosions/fx_flashbang",
+    "weapon/grenade/fx_prox_grenade_exp",
+    "weapon/satchel/fx_explosion_satchel_generic",
+    "weapon/sensor_grenade/fx_sensor_exp_scan_friendly",
+    "weapon/sensor_grenade/fx_sensor_exp_scan_enemy",
+];
+
+/// The T6 sound aliases `iw4l_t6/equipment` plays (no weapon names them).
+pub const T6_EQUIPMENT_SOUNDS: &[&str] = &[
+    "wpn_claymore_alert",
+    "fly_betty_jump",
+    "fly_betty_explo",
+    "dst_equipment_destroy",
+    "dst_disable_spark",
+    "dst_tac_insert_break",
+    "wpn_taser_mine_zap",
+    "wpn_taser_mine_tacmask",
+    "wpn_trophy_alert",
+    "wpn_trophy_spin",
+    "fly_sensor_nade_lp",
 ];
 
 /// The T6 weapon whose knife and swings every gun's melee borrows when

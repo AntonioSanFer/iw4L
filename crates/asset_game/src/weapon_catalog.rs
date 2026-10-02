@@ -2526,7 +2526,12 @@ impl WeaponCatalog {
             sz_xanims_left: t6_sz_xanims_left(weapon),
             hide_tags: Vec::new(),
             sounds: capture_t6_sounds(weapon),
-            combat_fx: WeaponCombatFx::default(),
+            combat_fx: WeaponCombatFx {
+                explosion_hint: weapon
+                    .def_asset_name(fastfile_t6::weapon::def::PROJ_EXPLOSION_EFFECT)
+                    .map(str::to_owned),
+                ..WeaponCombatFx::default()
+            },
             combat_slots: CombatFxSlots::default(),
             facts: capture_t6_body_facts(weapon),
         });
@@ -6666,6 +6671,16 @@ impl WeaponBuild {
             // its stand-in is (IW4's tactical insertion is equipment).
             if crate::weapon_t6::is_tactical_equipment(&own.name) {
                 facts.offhand_class = OFFHAND_CLASS_SMOKE;
+            }
+            // A T6 explosion effect that was captured replaces the
+            // stand-in's (the EMP grenade's flash, the shock charge's burst).
+            if let Some(effect) = own
+                .combat_fx
+                .explosion_hint
+                .as_deref()
+                .filter(|name| crate::T6_EFFECTS.contains(name))
+            {
+                dressed.combat_fx.explosion_hint = Some(effect.to_owned());
             }
             // The claymore's laser is the stand-in's, not a bouncing betty's
             // or a trophy system's.

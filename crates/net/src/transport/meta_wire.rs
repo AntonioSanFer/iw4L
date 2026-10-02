@@ -3156,6 +3156,8 @@ fn encode_objectives(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
         out.put_i32(fx.start_ms.unwrap_or(0));
         out.put_i32(fx.repeat_ms);
         out.put_f32(fx.cull_distance);
+        out.put_u8(u8::from(fx.viewers.is_some()));
+        out.put_u64(fx.viewers.unwrap_or(0));
     }
     encode_vision(out, state.naked_vision.as_ref());
     encode_vision(out, state.thermal_vision.as_ref());
@@ -3258,6 +3260,11 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
             start_ms: triggered.then_some(start),
             repeat_ms: input.get_i32()?,
             cull_distance: input.get_f32()?,
+            viewers: {
+                let hidden = input.get_u8()? != 0;
+                let mask = input.get_u64()?;
+                hidden.then_some(mask)
+            },
         });
     }
     state.naked_vision = decode_vision(input)?;

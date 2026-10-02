@@ -1182,10 +1182,15 @@ pub(super) fn bind_t6_fx(
         }
     }
     let count = effects.len();
+    let mut refused = Vec::new();
     for fx in &effects {
+        let before = catalog.capture_gaps;
         catalog.capture_t6(fx, Iw4);
+        if catalog.capture_gaps != before {
+            refused.push(fx.name.as_str());
+        }
     }
-    format!("t6 effects bound: {count} effects, {bound} materials")
+    format!("t6 effects bound: {count} effects, {bound} materials; not convertible: {refused:?}")
 }
 
 pub(super) async fn walk_startup_material_zones(

@@ -215,6 +215,7 @@ fn capture_sounds(
         }
     }
     names.extend(content.note_sounds.iter().cloned());
+    names.extend(asset_game::T6_EQUIPMENT_SOUNDS.iter().map(|&name| name.to_owned()));
     let (banks, mut report) = asset_audio::t6_sound_banks(path);
     let foley = foley_zone(path, &mut report);
     let loads: Vec<&fastfile_t6::ZoneLoad> = std::iter::once(load).chain(&foley).collect();
@@ -1161,26 +1162,48 @@ fn capture_effects(
     content: &mut T6Content,
 ) {
     let mut textures = DecodedTextures::new();
-    for &load in zones {
-        for asset in &load.assets {
-            if asset.ty != fastfile_t6::AssetType::Fx {
-                continue;
-            }
-            let Some(name) = header_str(load, &asset.header, 0) else {
-                continue;
-            };
-            if !asset_game::T6_EFFECTS.contains(&name)
-                || content.fx.iter().any(|fx| fx.name == name)
-            {
-                continue;
-            }
-            match capture_effect(load, asset, name, ipaks, &mut textures, content) {
-                Some(fx) => content.fx.push(fx),
-                None => content.report.push(format!("t6 effects: {name}: unreadable")),
+    // The listed effects and every effect they play in turn (runners, and
+    // the effects their elements spawn on impact, on death or as they go).
+    let mut wanted: std::collections::BTreeSet<String> = asset_game::T6_EFFECTS
+        .iter()
+        .map(|&name| name.to_owned())
+        .collect();
+    loop {
+        let before = content.fx.len();
+        for &load in zones {
+            for asset in &load.assets {
+                if asset.ty != fastfile_t6::AssetType::Fx {
+                    continue;
+                }
+                let Some(name) = header_str(load, &asset.header, 0) else {
+                    continue;
+                };
+                if !wanted.contains(name) || content.fx.iter().any(|fx| fx.name == name) {
+                    continue;
+                }
+                match capture_effect(load, asset, name, ipaks, &mut textures, content) {
+                    Some(fx) => content.fx.push(fx),
+                    None => content.report.push(format!("t6 effects: {name}: unreadable")),
+                }
             }
         }
+        for fx in &content.fx[before..] {
+            for elem in &fx.elems {
+                if elem.raw[FX_ELEM_TYPE] == FX_ELEM_RUNNER {
+                    wanted.extend(elem.visuals.iter().filter(|v| !v.is_empty()).cloned());
+                }
+                for child in [&elem.effect_on_impact, &elem.effect_on_death, &elem.effect_emitted] {
+                    if !child.is_empty() {
+                        wanted.insert(child.clone());
+                    }
+                }
+            }
+        }
+        if content.fx.len() == before {
+            break;
+        }
     }
-    let missing: Vec<_> = asset_game::T6_EFFECTS
+    let missing: Vec<_> = wanted
         .iter()
         .filter(|name| !content.fx.iter().any(|fx| fx.name == **name))
         .collect();

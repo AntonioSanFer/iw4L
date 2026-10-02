@@ -14,9 +14,33 @@
 
 main()
 {
-	level.t6EquipmentExplodeFx = loadfx( "explosions/grenadeexp_default" );
-	level.t6EquipmentDestroyFx = loadfx( "misc/spark_death" );
-	level.t6EmpFx = loadfx( "explosions/emp_flash_mp" );
+	// T6's own effects and sounds (`asset_game::T6_EFFECTS`,
+	// `T6_EQUIPMENT_SOUNDS`).
+	level.t6Fx = [];
+	level.t6Fx[ "betty_explosion" ] = loadfx( "weapon/bouncing_betty/fx_betty_explosion" );
+	level.t6Fx[ "betty_destroyed" ] = loadfx( "weapon/bouncing_betty/fx_betty_destroyed" );
+	level.t6Fx[ "betty_launch" ] = loadfx( "weapon/bouncing_betty/fx_betty_launch_dust" );
+	level.t6Fx[ "betty_friendly" ] = loadfx( "weapon/bouncing_betty/fx_betty_light_green" );
+	level.t6Fx[ "betty_enemy" ] = loadfx( "weapon/bouncing_betty/fx_betty_light_red" );
+	level.t6Fx[ "trophy_flash" ] = loadfx( "weapon/trophy_system/fx_trophy_flash_lng" );
+	level.t6Fx[ "trophy_detonation" ] = loadfx( "weapon/trophy_system/fx_trophy_radius_detonation" );
+	level.t6Fx[ "trophy_friendly" ] = loadfx( "weapon/trophy_system/fx_trophy_light_friendly" );
+	level.t6Fx[ "trophy_enemy" ] = loadfx( "weapon/trophy_system/fx_trophy_light_enemy" );
+	level.t6Fx[ "trophy_deploy" ] = loadfx( "weapon/trophy_system/fx_trophy_deploy_impact" );
+	level.t6Fx[ "shock_friendly" ] = loadfx( "weapon/grenade/fx_prox_grenade_scan_grn" );
+	level.t6Fx[ "shock_enemy" ] = loadfx( "weapon/grenade/fx_prox_grenade_scan_red" );
+	level.t6Fx[ "shock_warning" ] = loadfx( "weapon/grenade/fx_prox_grenade_wrn_red" );
+	level.t6Fx[ "shock_player" ] = loadfx( "weapon/grenade/fx_prox_grenade_impact_player_spwner" );
+	level.t6Fx[ "sensor_friendly" ] = loadfx( "weapon/sensor_grenade/fx_sensor_exp_scan_friendly" );
+	level.t6Fx[ "sensor_enemy" ] = loadfx( "weapon/sensor_grenade/fx_sensor_exp_scan_enemy" );
+	level.t6Fx[ "c4_friendly" ] = loadfx( "weapon/c4/fx_c4_light_green" );
+	level.t6Fx[ "c4_enemy" ] = loadfx( "weapon/c4/fx_c4_light_red" );
+	level.t6Fx[ "emp_fried" ] = loadfx( "weapon/emp/fx_emp_explosion_equip" );
+	level.t6Fx[ "disabled_spark" ] = loadfx( "weapon/grenade/fx_spark_disabled_weapon" );
+	level.t6Fx[ "equipment_explode" ] = loadfx( "explosions/fx_exp_equipment" );
+	level.t6Fx[ "equipment_explode_lg" ] = loadfx( "explosions/fx_exp_equipment_lg" );
+	level.t6Fx[ "fizzle" ] = loadfx( "misc/fx_equip_tac_insert_exp" );
+	level.t6Fx[ "emp_explosion" ] = loadfx( "explosions/fx_flashbang" );
 	precacheShader( "compassping_enemy" );
 
 	// Free objective slots for sensor grenade pings, from the top down;
@@ -111,6 +135,11 @@ watchEquipment()
 			case "emp_grenade_mp":
 				grenade thread empGrenadeThink( self );
 				break;
+			case "c4_mp":
+				// IW4's scripts run T6's C4; it shows T6's lights.
+				if ( isDefined( self.t6lethal ) && self.t6lethal == weapName )
+					grenade thread plantedLights( self, "c4" );
+				break;
 		}
 	}
 }
@@ -201,7 +230,9 @@ enemyDestroyable( owner, hint )
 		if ( !isEnemyOf( owner, player ) )
 			continue;
 
-		self destroyed();
+		playFx( level.t6Fx[ "fizzle" ], self.origin );
+		playSoundAtPos( self.origin, "dst_tac_insert_break" );
+		self delete();
 		return;
 	}
 }
@@ -217,6 +248,43 @@ keepEnemyUsable( owner )
 	}
 }
 
+plantedLights( owner, name )
+{
+	self waitTillPlanted();
+	self thread teamLights( owner, name, ( 0, 0, 0 ) );
+}
+
+// T6's equipment lights: green to its owner's side, red to everyone else.
+teamLights( owner, name, offset )
+{
+	self endon( "death" );
+	wait 0.05;
+
+	origin = self.origin + offset;
+	up = anglesToUp( self.angles );
+	forward = anglesToForward( self.angles );
+	friendly = spawnFx( level.t6Fx[ name + "_friendly" ], origin, forward, up );
+	enemy = spawnFx( level.t6Fx[ name + "_enemy" ], origin, forward, up );
+	triggerFx( friendly );
+	triggerFx( enemy );
+	self thread deleteOnDeath( friendly );
+	self thread deleteOnDeath( enemy );
+
+	for ( ;; )
+	{
+		friendly hide();
+		enemy hide();
+		foreach ( player in level.players )
+		{
+			if ( isEnemyOf( owner, player ) )
+				enemy showToPlayer( player );
+			else
+				friendly showToPlayer( player );
+		}
+		level waittill_either( "joined_team", "player_spawned" );
+	}
+}
+
 deleteOnDeath( ent )
 {
 	self waittill( "death" );
@@ -225,9 +293,12 @@ deleteOnDeath( ent )
 		ent delete();
 }
 
-destroyed()
+destroyed( fx )
 {
-	playFx( level.t6EquipmentDestroyFx, self.origin );
+	if ( !isDefined( fx ) )
+		fx = "equipment_explode";
+	playFx( level.t6Fx[ fx ], self.origin );
+	playSoundAtPos( self.origin, "dst_equipment_destroy" );
 	self delete();
 }
 
@@ -268,10 +339,11 @@ bettyThink( owner )
 	self addObject( owner );
 	self thread bettyDestroyedWatch( owner );
 	self waitTillPlanted();
+	self thread teamLights( owner, "betty", ( 0, 0, 0 ) );
 	wait 0.1;
 
 	self waitForTarget( owner, 192, false );
-	self playSound( "claymore_activated" );
+	self playSound( "wpn_claymore_alert" );
 	wait 0.6;
 
 	mover = spawn( "script_model", self.origin );
@@ -287,14 +359,18 @@ bettyJumpAndExplode( owner, origin )
 	explodePos = origin + ( 0, 0, 65 );
 	self moveTo( explodePos, 0.65, 0.65, 0 );
 	self rotateVelocity( ( 0, 750, 32 ), 0.65, 0, 0.65 );
+	playFx( level.t6Fx[ "betty_launch" ], origin );
+	self playSound( "fly_betty_jump" );
 	wait 0.65;
+
+	self playSound( "fly_betty_explo" );
+	wait 0.05;
 
 	if ( isDefined( owner ) )
 		self radiusDamage( explodePos, 256, 210, 70, owner, "MOD_EXPLOSIVE", "bouncingbetty_mp" );
 	else
 		self radiusDamage( explodePos, 256, 210, 70, undefined, "MOD_EXPLOSIVE", "bouncingbetty_mp" );
-	playFx( level.t6EquipmentExplodeFx, explodePos );
-	playSoundAtPos( explodePos, "detpack_explo_default" );
+	playFx( level.t6Fx[ "betty_explosion" ], explodePos );
 	self hide();
 	wait 0.2;
 	self delete();
@@ -308,7 +384,8 @@ bettyDestroyedWatch( owner )
 
 	// Shot, it fizzles with a small blast.
 	origin = self.origin;
-	playFx( level.t6EquipmentDestroyFx, origin );
+	playFx( level.t6Fx[ "betty_destroyed" ], origin );
+	playSoundAtPos( origin, "dst_equipment_destroy" );
 	self radiusDamage( origin, 128, 110, 10, owner, "MOD_EXPLOSIVE", "bouncingbetty_mp" );
 	self delete();
 }
@@ -322,10 +399,11 @@ shockChargeThink( owner )
 	self thread shockOnExplode( owner );
 	self thread shockDestroyedWatch( owner );
 	self waitTillPlanted();
+	self thread teamLights( owner, "shock", ( 0, 0, 0 ) );
 	wait 0.1;
 
 	self waitForTarget( owner, 150, true );
-	self playSound( "claymore_activated" );
+	playFx( level.t6Fx[ "shock_warning" ], self.origin );
 	wait 0.1;
 	self detonate( owner );
 }
@@ -363,6 +441,8 @@ shocked( owner, origin )
 	self endon( "disconnect" );
 
 	self shellShock( "concussion_grenade_mp", 1.5 );
+	playFx( level.t6Fx[ "shock_player" ], self getEye() - ( 0, 0, 20 ) );
+	self playSound( "wpn_taser_mine_zap" );
 
 	for ( i = 0; i < 4; i++ )
 	{
@@ -385,6 +465,9 @@ trophyThink( owner )
 	self thread trophyDamageWatch( owner );
 	self thread enemyDestroyable( owner, "Press ^3[{+activate}]^7 to destroy Trophy System" );
 	self waitTillPlanted();
+	playFx( level.t6Fx[ "trophy_deploy" ], self.origin );
+	self playLoopSound( "wpn_trophy_spin" );
+	self thread teamLights( owner, "trophy", anglesToUp( self.angles ) * 15 );
 	wait 0.1;
 
 	self.ammo = 2;
@@ -402,8 +485,9 @@ trophyThink( owner )
 			continue;
 
 		position = target.origin;
-		playFx( level.t6EquipmentDestroyFx, position );
-		self playSound( "claymore_activated" );
+		playFx( level.t6Fx[ "trophy_flash" ], self.origin + ( 0, 0, 15 ), position - self.origin, anglesToUp( self.angles ) );
+		playFx( level.t6Fx[ "trophy_detonation" ], position );
+		self playSound( "wpn_trophy_alert" );
 
 		if ( isDefined( target.enemyTrigger ) && isDefined( target.playerSpawnPos ) )
 			target maps\mp\perks\_perkfunctions::deleteTI( target );
@@ -415,7 +499,7 @@ trophyThink( owner )
 		self.ammo--;
 		if ( self.ammo <= 0 )
 		{
-			self destroyed();
+			self destroyed( "equipment_explode_lg" );
 			return;
 		}
 	}
@@ -471,7 +555,7 @@ trophyDamageWatch( owner )
 {
 	self waitTillDamaged( owner, 20 );
 	if ( isDefined( self ) )
-		self destroyed();
+		self destroyed( "equipment_explode_lg" );
 }
 
 // Sensor grenade: shows its owner's side the enemies within 750 it can see
@@ -483,6 +567,8 @@ sensorThink( owner )
 	self thread sensorDamageWatch( owner );
 	self thread enemyDestroyable( owner, "Press ^3[{+activate}]^7 to destroy Sensor Grenade" );
 	self waitTillPlanted();
+	self playLoopSound( "fly_sensor_nade_lp" );
+	self thread teamLights( owner, "sensor", ( 0, 0, 0 ) );
 
 	for ( ;; )
 	{
@@ -540,8 +626,8 @@ empGrenadeThink( owner )
 {
 	self waittill( "explode", origin );
 
-	playFx( level.t6EmpFx, origin );
-	playSoundAtPos( origin, "emp_activate" );
+	// T6 detonates it as a smoke-type grenade, which plays no burst.
+	playFx( level.t6Fx[ "emp_explosion" ], origin );
 
 	foreach ( player in level.players )
 	{
@@ -585,7 +671,9 @@ empFried()
 	self endon( "death" );
 	self.t6StunnedUntil = getTime() + 2000;
 	self.disabled = true;
-	playFx( level.t6EquipmentDestroyFx, self.origin + ( 0, 0, 5 ) );
+	playFx( level.t6Fx[ "emp_fried" ], self.origin + ( 0, 0, 5 ) );
+	playFx( level.t6Fx[ "disabled_spark" ], self.origin );
+	self playSound( "dst_disable_spark" );
 	wait 1.1;
 	self delete();
 }

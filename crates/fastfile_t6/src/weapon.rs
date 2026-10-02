@@ -179,6 +179,7 @@ pub mod def {
     pub const PROJECTILE_ACTIVATE_DIST: u32 = 1752;
     pub const PROJECTILE_MODEL: u32 = 1768;
     pub const PROJ_EXPLOSION: u32 = 1772;
+    pub const PROJ_EXPLOSION_EFFECT: u32 = 1776;
     pub const PROJ_IMPACT_EXPLODE: u32 = 1836;
     pub const STICKINESS: u32 = 1840;
     pub const PLANTABLE: u32 = 1848;

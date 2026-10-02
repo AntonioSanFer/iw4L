@@ -214,24 +214,27 @@ pub(crate) fn publish(world: &mut World) {
     let pain_vision = runtime.engine.pain_vision.clone();
     let fog = runtime.engine.fog;
     let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
-    let rows: Vec<(u64, super::entities::PersistentFx)> = runtime
+    let rows: Vec<(u64, super::entities::PersistentFx, Option<u64>)> = runtime
         .engine
         .effects
         .iter()
-        .filter(|(id, _)| runtime.entities.contains_key(id))
-        .map(|(id, fx)| (*id, fx.clone()))
+        .filter_map(|(id, fx)| {
+            let entity = runtime.entities.get(id)?;
+            let viewers = entity.hidden.then_some(entity.shown_to);
+            Some((*id, fx.clone(), viewers))
+        })
         .collect();
     let mut runtime = world.resource_mut::<Runtime>();
     runtime
         .engine
         .effects
-        .retain(|id, _| rows.iter().any(|(row, _)| row == id));
+        .retain(|id, _| rows.iter().any(|(row, _, _)| row == id));
     runtime.engine.earthquakes.retain(|quake| quake.active(now));
     let earthquakes = runtime.engine.earthquakes.clone();
     let mut frame = FrameWorld::from_world(world);
     let effects = rows
         .into_iter()
-        .map(|(id, fx)| ScriptEffect {
+        .map(|(id, fx, viewers)| ScriptEffect {
             id: id as u32,
             effect: frame.effect_name_index(&fx.name),
             origin: fx.origin,
@@ -240,6 +243,7 @@ pub(crate) fn publish(world: &mut World) {
             start_ms: fx.start_ms,
             repeat_ms: fx.repeat_ms,
             cull_distance: fx.cull_distance,
+            viewers,
         })
         .collect();
     frame.objectives = ObjectiveMatch {

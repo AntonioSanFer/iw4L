@@ -22,6 +22,7 @@ const SND_ALIAS_LIST_HEAD: usize = 8;
 const SND_ALIAS_LIST_COUNT: usize = 12;
 const SND_ALIAS: u32 = 96;
 const SND_ALIAS_SECONDARY: usize = 12;
+const SND_ALIAS_FLAGS0: usize = 24;
 
 fn le16(b: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([b[at], b[at + 1]])
@@ -144,6 +145,8 @@ pub fn capture_t6_sounds<'n>(
                 dist_min: f32::from(le16(row, 68)),
                 dist_max: f32::from(le16(row, 70)),
                 start_delay: i32::from(le16(row, 54)),
+                // `flags0` bit 0; the rest of T6's flag words is not IW4's.
+                looping: Some(le32(row, SND_ALIAS_FLAGS0) & 1 != 0),
                 probability: f32::from(row[88]) / 255.0,
                 ..Default::default()
             });
