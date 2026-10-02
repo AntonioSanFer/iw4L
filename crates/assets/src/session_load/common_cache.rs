@@ -466,7 +466,7 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         mut projectile_meshes,
         mut xanims,
         mut player_anim_sources,
-        common_fx,
+        mut common_fx,
         common_fx_models,
         common_impact,
         material_seed,
@@ -655,7 +655,13 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         ));
         t6_anim_names.extend(added);
     }
-    if let Some(content) = t6_content {
+    if let Some(mut content) = t6_content {
+        common_report.push(bind_t6_fx(
+            std::mem::take(&mut content.fx),
+            std::mem::take(&mut content.fx_materials),
+            &mut material_seed,
+            &mut common_fx,
+        ));
         common_report.push(bind_t6_content(
             content,
             &weapons,

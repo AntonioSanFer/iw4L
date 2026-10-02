@@ -392,6 +392,39 @@ const INSERTION_GLOW_MODEL: &str = "mil_emergency_flare_mp";
 /// at the thrower's last spot on the ground.
 const INSERTION_PLANT_REACH: f32 = 256.0;
 
+/// The flare glows IW4's scripts light on a tactical insertion (team, then
+/// enemy colour), and the T6 lights a foreign one shows in their place.
+const INSERTION_LIGHTS: [(&str, &str); 2] = [
+    ("misc/flare_ambient_green", "misc/fx_equip_tac_insert_light_grn"),
+    ("misc/flare_ambient", "misc/fx_equip_tac_insert_light_red"),
+];
+
+/// How far from its glow stick the scripts light a flare: at the flare
+/// model's `tag_fire_fx`.
+const INSERTION_LIGHT_REACH: f32 = 16.0;
+
+/// The T6 light a flare glow lit on a foreign tactical insertion shows as,
+/// and where: on the insertion itself.
+pub(crate) fn insertion_light(
+    world: &World,
+    effect: &str,
+    origin: [f32; 3],
+) -> Option<(&'static str, [f32; 3])> {
+    let (_, light) = INSERTION_LIGHTS.iter().find(|(flare, _)| *flare == effect)?;
+    world
+        .resource::<Runtime>()
+        .insertion_spots
+        .iter()
+        .find(|(spot, _)| {
+            spot.iter()
+                .zip(origin)
+                .map(|(a, b)| (a - b) * (a - b))
+                .sum::<f32>()
+                <= INSERTION_LIGHT_REACH * INSERTION_LIGHT_REACH
+        })
+        .map(|(spot, _)| (*light, *spot))
+}
+
 /// IW4's scripts plant a thrown tactical insertion as a glow stick of their
 /// own and leave the grenade lying; a foreign one is noted for the glow
 /// stick to carry its model in the grenade's place.

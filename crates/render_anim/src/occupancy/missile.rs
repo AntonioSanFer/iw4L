@@ -18,9 +18,6 @@ use render_scene::{
 
 pub const MISSILE_LIGHTING_Z_OFS: f32 = 4.0;
 
-/// The pitch a planted weapon model stands at, its forward axis up.
-const PLANTED_PITCH: f32 = -90.0;
-
 #[derive(Resource, Default)]
 pub struct MissileOccupancy {
     pub rows: Vec<OccupiedMissile>,
@@ -291,10 +288,8 @@ fn occupy_missile_scene_ents(
             continue;
         }
         let origin = transform.translation.to_array();
-        // A weapon's model lies along its forward axis; planted, it stands
-        // on its end.
         let (yaw, pitch, roll) = transform.rotation.to_euler(EulerRot::ZYX);
-        let angles = [pitch.to_degrees() + PLANTED_PITCH, yaw.to_degrees(), roll.to_degrees()];
+        let angles = [pitch, yaw, roll].map(f32::to_degrees);
         let lighting_origin = missile_lighting_origin(origin);
         scene_submissions.write(AnimDObjSceneSubmission {
             render_fx_flags: 0,

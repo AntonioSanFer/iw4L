@@ -94,6 +94,13 @@ pub fn planted_model(name: &str) -> Option<&'static str> {
         .map(|(_, model)| *model)
 }
 
+/// The T6 effects IW4 matches play: the tactical insertion's light, team
+/// colour and enemy colour.
+pub const T6_EFFECTS: &[&str] = &[
+    "misc/fx_equip_tac_insert_light_grn",
+    "misc/fx_equip_tac_insert_light_red",
+];
+
 /// The T6 weapon whose knife and swings every gun's melee borrows when
 /// the gun has no melee clip of its own (T6 rifles and snipers do not).
 pub const MELEE_WEAPON: &str = "knife_mp";

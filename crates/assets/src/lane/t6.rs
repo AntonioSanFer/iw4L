@@ -66,6 +66,10 @@ pub struct T6Content {
     pub techsets: BTreeMap<String, asset_material::t6_techset::T6TechniqueSet>,
     /// The knife and swings a gun without melee clips borrows.
     pub melee: Option<asset_game::T6Melee>,
+    /// The effects [`asset_game::T6_EFFECTS`] names, and the materials
+    /// their sprites draw with.
+    pub fx: Vec<asset_game::T6FxCapture>,
+    pub fx_materials: BTreeMap<String, T6MaterialCapture>,
     pub report: Vec<String>,
 }
 
@@ -1127,7 +1131,162 @@ fn capture_content(
         content.materials.len(),
         ipaks.len()
     ));
+    capture_effects(&zones, ipaks, &mut content);
     content
+}
+
+/// T6 `FxElemDef`: element type, sample counts and pointers, visuals and
+/// the child effects it names.
+const FX_ELEM_DEF: u32 = 292;
+const FX_ELEM_TYPE: usize = 184;
+const FX_ELEM_VEL_SAMPLES: usize = 188;
+const FX_ELEM_VIS_SAMPLES: usize = 192;
+const FX_ELEM_VISUALS: u32 = 196;
+const FX_ELEM_CHILDREN: [usize; 3] = [224, 228, 232];
+const FX_ELEM_VEL_SAMPLE: usize = 96;
+const FX_ELEM_VIS_SAMPLE: usize = 48;
+const FX_EFFECT_DEF_ELEMS: usize = 28;
+/// T6 element types up to `cloud` draw a material; 7 a model, 10 a sound,
+/// 12 a runner (an effect by name).
+const FX_ELEM_LAST_SPRITE: u8 = 6;
+const FX_ELEM_MODEL: u8 = 7;
+const FX_ELEM_SOUND: u8 = 10;
+const FX_ELEM_RUNNER: u8 = 12;
+
+/// The effects T6 content plays in IW4 matches, with the colour maps of
+/// the materials their sprites draw.
+fn capture_effects(
+    zones: &[&fastfile_t6::ZoneLoad],
+    ipaks: &[asset_transport::IPak],
+    content: &mut T6Content,
+) {
+    let mut textures = DecodedTextures::new();
+    for &load in zones {
+        for asset in &load.assets {
+            if asset.ty != fastfile_t6::AssetType::Fx {
+                continue;
+            }
+            let Some(name) = header_str(load, &asset.header, 0) else {
+                continue;
+            };
+            if !asset_game::T6_EFFECTS.contains(&name)
+                || content.fx.iter().any(|fx| fx.name == name)
+            {
+                continue;
+            }
+            match capture_effect(load, asset, name, ipaks, &mut textures, content) {
+                Some(fx) => content.fx.push(fx),
+                None => content.report.push(format!("t6 effects: {name}: unreadable")),
+            }
+        }
+    }
+    let missing: Vec<_> = asset_game::T6_EFFECTS
+        .iter()
+        .filter(|name| !content.fx.iter().any(|fx| fx.name == **name))
+        .collect();
+    content.report.push(format!(
+        "t6 effects: {} captured, {} materials; in no zone read: {missing:?}",
+        content.fx.len(),
+        content.fx_materials.len()
+    ));
+}
+
+fn capture_effect(
+    load: &fastfile_t6::ZoneLoad,
+    asset: &fastfile_t6::LoadedAsset,
+    name: &str,
+    ipaks: &[asset_transport::IPak],
+    textures: &mut DecodedTextures,
+    content: &mut T6Content,
+) -> Option<asset_game::T6FxCapture> {
+    let header = &asset.header;
+    let count = |at: usize| u16::from_le_bytes([header[at], header[at + 1]]) as u32;
+    let elem_count = count(8) + count(10) + count(12);
+    let mut fx = asset_game::T6FxCapture {
+        name: name.to_owned(),
+        header: header.clone(),
+        elems: Vec::new(),
+    };
+    if elem_count == 0 {
+        return Some(fx);
+    }
+    let elems = decode_ptr(header_u32(header, FX_EFFECT_DEF_ELEMS)?)?;
+    let blocks = &load.blocks;
+    for i in 0..elem_count {
+        let at = elems.at(i * FX_ELEM_DEF);
+        let raw = blocks.bytes(at, FX_ELEM_DEF as usize).ok()?.to_vec();
+        let elem_type = raw[FX_ELEM_TYPE];
+        let visual_count = usize::from(raw[FX_ELEM_TYPE + 1]);
+        let samples = |field: usize, n: usize, stride: usize| -> Vec<u8> {
+            decode_ptr(header_u32(&raw, field).unwrap_or(0))
+                .and_then(|p| blocks.bytes(p, n * stride).ok())
+                .map(<[u8]>::to_vec)
+                .unwrap_or_default()
+        };
+        let vel_samples = samples(
+            FX_ELEM_VEL_SAMPLES,
+            usize::from(raw[FX_ELEM_TYPE + 2]) + 1,
+            FX_ELEM_VEL_SAMPLE,
+        );
+        let vis_samples = samples(
+            FX_ELEM_VIS_SAMPLES,
+            usize::from(raw[FX_ELEM_TYPE + 3]) + 1,
+            FX_ELEM_VIS_SAMPLE,
+        );
+        // One visual sits in the element; more are an array it points at.
+        let slots: Vec<fastfile_t6::Ptr> = if visual_count > 1 {
+            decode_ptr(header_u32(&raw, FX_ELEM_VISUALS as usize).unwrap_or(0))
+                .map(|arr| (0..visual_count as u32).map(|v| arr.at(v * 4)).collect())
+                .unwrap_or_default()
+        } else if visual_count == 1 {
+            vec![at.at(FX_ELEM_VISUALS)]
+        } else {
+            Vec::new()
+        };
+        let mut visuals = Vec::new();
+        for slot in slots {
+            let visual = match elem_type {
+                0..=FX_ELEM_LAST_SPRITE => {
+                    let material = load.asset_in(asset, slot);
+                    let name = material.and_then(|m| header_str(load, &m.header, 0));
+                    if let (Some(material), Some(name)) = (material, name)
+                        && !content.fx_materials.contains_key(name)
+                    {
+                        let capture =
+                            capture_material(load, material, ipaks, textures, &mut content.report);
+                        content.fx_materials.insert(name.to_owned(), capture);
+                    }
+                    name.map(str::to_owned)
+                }
+                FX_ELEM_MODEL => load
+                    .asset_in(asset, slot)
+                    .and_then(|m| header_str(load, &m.header, 0))
+                    .map(asset_game::t6_model_name),
+                FX_ELEM_SOUND | FX_ELEM_RUNNER => blocks
+                    .bytes(slot, 4)
+                    .ok()
+                    .and_then(|b| header_str(load, b, 0))
+                    .map(str::to_owned),
+                _ => None,
+            };
+            visuals.push(visual.unwrap_or_default());
+        }
+        let child = |field: usize| {
+            header_str(load, &raw, field)
+                .map(str::to_owned)
+                .unwrap_or_default()
+        };
+        fx.elems.push(asset_game::T6FxElemCapture {
+            vel_samples,
+            vis_samples,
+            visuals,
+            effect_on_impact: child(FX_ELEM_CHILDREN[0]),
+            effect_on_death: child(FX_ELEM_CHILDREN[1]),
+            effect_emitted: child(FX_ELEM_CHILDREN[2]),
+            raw,
+        });
+    }
+    Some(fx)
 }
 
 impl ZoneLane for T6Lane {

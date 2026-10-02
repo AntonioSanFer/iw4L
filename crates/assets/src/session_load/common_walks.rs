@@ -1141,6 +1141,53 @@ pub(super) fn bind_t6_content(
     )
 }
 
+/// IW4's own glow effect, whose material lends T6 effect materials their
+/// draw states (additive, emissive).
+const T6_FX_DONOR_EFFECT: &str = "misc/glow_stick_glow_green";
+
+/// T6 effects join the IW4 catalog; each material their sprites draw is an
+/// IW4 glow material wearing the T6 colour map.
+pub(super) fn bind_t6_fx(
+    effects: Vec<asset_game::T6FxCapture>,
+    fx_materials: std::collections::BTreeMap<String, crate::lane::t6::T6MaterialCapture>,
+    materials: &mut MaterialCatalog,
+    catalog: &mut asset_game::FxCatalog,
+) -> String {
+    use asset_core::AssetNamespace::Iw4;
+    let donor = catalog.get_in(Iw4, T6_FX_DONOR_EFFECT).and_then(|fx| {
+        fx.elems
+            .iter()
+            .flat_map(|elem| elem.visuals.iter())
+            .flat_map(|visual| visual.decode_keys())
+            .find_map(|key| materials.material_index_by_ns(key.namespace, &key.name))
+    });
+    let Some(donor) = donor else {
+        return format!("t6 effects: no donor material ({T6_FX_DONOR_EFFECT} not loaded)");
+    };
+    let mut bound = 0usize;
+    for (name, capture) in fx_materials {
+        let Some(color) = capture.color else {
+            continue;
+        };
+        let textures = asset_material::StandInTextures {
+            color: Some((color.0, color.1, true)),
+            normal: None,
+            specular: None,
+        };
+        if materials
+            .stand_in_material(donor.order(), &name, textures)
+            .is_some()
+        {
+            bound += 1;
+        }
+    }
+    let count = effects.len();
+    for fx in &effects {
+        catalog.capture_t6(fx, Iw4);
+    }
+    format!("t6 effects bound: {count} effects, {bound} materials")
+}
+
 pub(super) async fn walk_startup_material_zones(
     map_path: Option<&PathBuf>,
     progress: &LoadProgress,
