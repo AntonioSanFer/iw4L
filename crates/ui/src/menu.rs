@@ -77,7 +77,10 @@ pub fn install_frontend_menus(catalog: &mut asset_game::MenuCatalog) -> Result<(
                 .iter()
                 .find(|item| item.text_key == "@MENU_MOUSE_SENSITIVITY")
                 .map(|label| label.rect.y)
-            && let Some(item) = menu.items.iter_mut().find(|item| item.item_type == 10)
+            && let Some(item) = menu
+                .items
+                .iter_mut()
+                .find(|item| item.item_type == asset_game::ITEM_TYPE_SLIDER)
         {
             *item = asset_game::MenuItem {
                 name: "look_sensitivity".into(),

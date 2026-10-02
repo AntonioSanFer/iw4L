@@ -8,10 +8,9 @@ must be deleted before the final squash/push unless specifically approved. A
 useful test is not automatically an approved test.
 
 A new permanent scenario is added here only after the owner has approved that
-scenario by name. The same holds for a unit test inside this crate: being
-useful does not make it approved. `make publish-check` refuses `#[test]`,
-`#[cfg(test)]`, `mod tests` and `tests/` directories anywhere else in the
-workspace.
+scenario by name, as a scenario the runner drives, never as a `cargo test`.
+`make publish-check` refuses `#[test]`, `#[cfg(test)]`, `mod tests` and `tests/`
+directories everywhere in the workspace, this crate included.
 
 ## Approved scenarios
 

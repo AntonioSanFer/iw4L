@@ -27,7 +27,6 @@ pub fn tool_on_path(name: &str) -> bool {
     let Some(path) = std::env::var_os("PATH") else {
         return false;
     };
-    // Windows executables carry `.exe` (rustup installs `rustfmt.exe`).
     let exe = format!("{name}{}", std::env::consts::EXE_SUFFIX);
     std::env::split_paths(&path)
         .any(|dir| is_executable(&dir.join(name)) || is_executable(&dir.join(&exe)))

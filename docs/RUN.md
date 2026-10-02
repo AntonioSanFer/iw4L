@@ -19,8 +19,7 @@ scenario`, `chaos`, `bench` ([`BENCH.md`](BENCH.md)), `bench-live`, `lifecycle-*
 actions: `move`, `look`, `tp`, `nudge`, `god`, `kill`, `damage`, `force_spawn`,
 `force_match_start`, `rotatevelocity` and the `give` supply commands. `--no-cheats`
 turns them off for `map`, `serve` and `menu`; a lobby host toggles them in the
-game setup. With cheats off the host refuses these actions, and a listen host
-echoes `cheats are off`.
+game setup.
 
 **GSC controls the start freeze.** `freezecontrols` constrains authority movement;
 snapshots carry the same constraints into client prediction and command replay.

@@ -19,6 +19,8 @@ pub const ITEM_TYPE_BUTTON: i32 = 1;
 
 pub const ITEM_TYPE_TEXT: i32 = 0;
 
+pub const ITEM_TYPE_SLIDER: i32 = 10;
+
 #[derive(Clone, Copy, Debug, Default, serde::Deserialize, serde::Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MenuRect {
