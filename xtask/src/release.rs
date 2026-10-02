@@ -11,7 +11,7 @@ use crate::windows;
 const ZSTD_LEVEL: &str = "3";
 const ZSTD_THREADS: &str = "0";
 
-const ARCHIVE_PASSWORD: &[u8] = b"contextrot";
+const ARCHIVE_PASSWORD: &[u8] = b"t.me/contextrot";
 
 pub struct Git {
     pub rev: String,

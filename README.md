@@ -23,7 +23,7 @@ multiplayer peers must run the same build.
 ## Windows: prebuilt release
 
 1. Download `iw4l-windows.zip` from [Releases](../../releases) and extract it into an
-   empty writable folder. The archive password is `contextrot`.
+   empty writable folder. The archive password is `t.me/contextrot`.
 2. Next to `iw4l.exe`, add a Windows shortcut to your MW2 installation folder.
 3. Launch `iw4l.exe`.
 
