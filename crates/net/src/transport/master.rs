@@ -269,6 +269,28 @@ struct MasterTarget {
     address: String,
     server_name: String,
     ca_cert: Option<PathBuf>,
+    ca_pem: Option<String>,
+}
+
+fn master_target() -> Result<Option<MasterTarget>> {
+    if let Some(community) = updater::selected() {
+        return Ok(Some(MasterTarget {
+            address: community.master.address.clone(),
+            server_name: community.master.server_name.clone(),
+            ca_cert: None,
+            ca_pem: Some(community.updates.ca_pem.clone()),
+        }));
+    }
+    let Ok(address) = std::env::var("IW4L_MASTER_ADDR") else {
+        return Ok(None);
+    };
+    Ok(Some(MasterTarget {
+        address,
+        server_name: std::env::var("IW4L_MASTER_SERVER_NAME")
+            .map_err(|_| "IW4L_MASTER_ADDR requires IW4L_MASTER_SERVER_NAME")?,
+        ca_cert: std::env::var_os("IW4L_MASTER_CA_CERT").map(PathBuf::from),
+        ca_pem: None,
+    }))
 }
 
 #[derive(Clone, Debug)]
@@ -313,31 +335,18 @@ pub struct MasterLaunchIntent(MasterLaunchMode);
 
 impl MasterLaunchIntent {
     pub fn browser_from_env(have: ContentFlags) -> Result<Self> {
-        let Ok(address) = std::env::var("IW4L_MASTER_ADDR") else {
+        let Some(target) = master_target()? else {
             return Ok(Self::disabled());
         };
-        let server_name = std::env::var("IW4L_MASTER_SERVER_NAME")
-            .map_err(|_| "IW4L_MASTER_ADDR requires IW4L_MASTER_SERVER_NAME")?;
         Ok(Self(MasterLaunchMode::Browser(BrowserConfig {
-            target: MasterTarget {
-                address,
-                server_name,
-                ca_cert: std::env::var_os("IW4L_MASTER_CA_CERT").map(PathBuf::from),
-            },
+            target,
             have,
         })))
     }
 
     pub fn from_env_for_map(map: &str, have: ContentFlags, requires: ContentFlags) -> Result<Self> {
-        let Ok(address) = std::env::var("IW4L_MASTER_ADDR") else {
-            return Ok(Self(MasterLaunchMode::Disabled));
-        };
-        let server_name = std::env::var("IW4L_MASTER_SERVER_NAME")
-            .map_err(|_| "IW4L_MASTER_ADDR requires IW4L_MASTER_SERVER_NAME")?;
-        let target = MasterTarget {
-            address,
-            server_name,
-            ca_cert: std::env::var_os("IW4L_MASTER_CA_CERT").map(PathBuf::from),
+        let Some(target) = master_target()? else {
+            return Ok(Self::disabled());
         };
         let host = std::env::var("IW4L_MASTER_HOST_NAME").ok();
         let join = std::env::var("IW4L_MASTER_JOIN").ok();
@@ -1245,18 +1254,6 @@ fn apply_master_lifecycle(
     {
         hub.reconcile_relay_membership(state.members(), state.identity().member_id);
     }
-    if let Some(hub) = hub.as_mut() {
-        for admission in hub.take_committed_admissions() {
-            let client = hub.client_of_member(admission.member_id);
-            bridge.admit_enter(
-                admission.member_id,
-                admission.epoch,
-                admission.bootstrap_id,
-                Some(admission.connection_id),
-                client.map(|client| client.0).unwrap_or(0),
-            );
-        }
-    }
     for fact in bridge.drain_facts() {
         match fact {
             MasterLifecycleFact::MemberLeft { member_id } => {
@@ -1285,6 +1282,18 @@ fn apply_master_lifecycle(
                 }
             }
             MasterLifecycleFact::SessionClosed { .. } => {}
+        }
+    }
+    if let Some(hub) = hub.as_mut() {
+        for admission in hub.take_committed_admissions() {
+            let client = hub.client_of_member(admission.member_id);
+            bridge.admit_enter(
+                admission.member_id,
+                admission.epoch,
+                admission.bootstrap_id,
+                Some(admission.connection_id),
+                client.map(|client| client.0).unwrap_or(0),
+            );
         }
     }
 }
@@ -2351,6 +2360,9 @@ fn handle_command(
                     connection_id,
                 },
             );
+            if !applied.accepted {
+                return Ok(CommandEffect::Continue);
+            }
             execute_host_match_effects(
                 applied.effects,
                 map_ready,
@@ -3147,7 +3159,11 @@ async fn connect(
         .to_socket_addrs()?
         .next()
         .ok_or_else(|| format!("{} resolved no addresses", target.address))?;
-    let mut crypto = if let Some(path) = target.ca_cert.as_deref() {
+    let mut crypto = if let Some(pem) = &target.ca_pem {
+        rustls::ClientConfig::builder()
+            .with_root_certificates(updater::trust_roots(pem)?)
+            .with_no_client_auth()
+    } else if let Some(path) = target.ca_cert.as_deref() {
         let mut roots = rustls::RootCertStore::empty();
         for cert in load_certificates(path)? {
             roots.add(cert)?;
@@ -3176,7 +3192,7 @@ async fn connect(
     let mut endpoint = quinn::Endpoint::client(bind.parse()?)?;
     endpoint.set_default_client_config(client_config);
     let local = endpoint.local_addr()?;
-    let trust = if target.ca_cert.is_some() {
+    let trust = if target.ca_cert.is_some() || target.ca_pem.is_some() {
         "custom-ca"
     } else {
         "platform"

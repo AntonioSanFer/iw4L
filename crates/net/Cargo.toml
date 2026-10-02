@@ -6,6 +6,9 @@ license.workspace = true
 description = "Our wire: frames, deltas, prediction, interpolation. Not retail's netcode."
 
 [dependencies]
+updater = { path = "../updater" }
+structured_data_iw4.workspace = true
+ring = "0.17.14"
 diag.workspace = true
 math_iw4.workspace = true
 frame.workspace = true

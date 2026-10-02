@@ -923,6 +923,13 @@ fn register_placement(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "geteye", |world, receiver, _| {
         let id = entity_id(world, receiver)?;
+        if let Some(client) = runtime(world).player_client(id)
+            && let Some(view) = crate::frame::FrameWorld::from_world(world)
+                .client_meta(crate::ClientId(client))
+                .and_then(|meta| meta.linked_weapon_view)
+        {
+            return Ok(Value::Vector(view.origin));
+        }
         let origin = vector_field(world, id, "origin");
         let height = match runtime(world).player_client(id) {
             Some(client) => crate::frame::FrameWorld::from_world(world)
@@ -1424,7 +1431,7 @@ fn register_attachments(registry: &mut NativeRegistry) {
             .attachments
             .get(index.max(0) as usize)
             .ok_or("bad attachment index")?;
-        Ok(Value::String(model.clone()))
+        Ok(Value::String(model.clone().into()))
     });
     registry.register(Method, "getattachtagname", |world, receiver, args| {
         let index = int(args, 0)?;
@@ -1434,7 +1441,7 @@ fn register_attachments(registry: &mut NativeRegistry) {
             .attachments
             .get(index.max(0) as usize)
             .ok_or("bad attachment index")?;
-        Ok(Value::String(tag.clone()))
+        Ok(Value::String(tag.clone().into()))
     });
 }
 
@@ -1575,7 +1582,7 @@ fn register_entity_state(registry: &mut NativeRegistry) {
     registry.register(Method, "scriptmodelplayanim", |world, receiver, args| {
         let clip = match arg(args, 0)? {
             Value::Animation { name, .. } => name.clone(),
-            Value::String(name) => name.clone(),
+            Value::String(name) => name.clone().into(),
             other => return Err(format!("{} is not an animation", kind(other))),
         };
         with_entity(world, receiver, |e| e.anim_op = Some(Some(clip)))

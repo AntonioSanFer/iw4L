@@ -1132,6 +1132,14 @@ impl AssetLinkSink for ZoneWalkSink {
         if let Some(sound) = self.sound.as_mut() {
             sound.iw4_loaded(stream, ty, slot, insert_slot);
         }
+        if ty == AssetType::StructuredDataDef
+            && let Some(header) = stream.structured_data_def_set()
+        {
+            match asset_game::structured_data::capture_iw4_structured_data_def_set(stream, header) {
+                Ok((name, schema)) => self.scripts.capture_schema(name, schema),
+                Err(error) => diag::warn!(World, "structured-data capture: {error}"),
+            }
+        }
         self.materials.loaded(stream, ty, slot, insert_slot)?;
         if ty == AssetType::Fx {
             self.fx.note_loaded(slot, insert_slot);
@@ -1354,6 +1362,14 @@ impl AssetLinkSink for CommonWalkSink {
     ) -> fastfile_iw4::Result<()> {
         if let Some(sound) = self.sound.as_mut() {
             sound.iw4_loaded(stream, ty, slot, insert_slot);
+        }
+        if ty == AssetType::StructuredDataDef
+            && let Some(header) = stream.structured_data_def_set()
+        {
+            match asset_game::structured_data::capture_iw4_structured_data_def_set(stream, header) {
+                Ok((name, schema)) => self.scripts.capture_schema(name, schema),
+                Err(error) => diag::warn!(World, "structured-data capture: {error}"),
+            }
         }
         self.materials.loaded(stream, ty, slot, insert_slot)?;
         if ty == AssetType::Weapon {
@@ -1612,6 +1628,14 @@ impl AssetLinkSink for MaterialPopulationSink {
     ) -> fastfile_iw4::Result<()> {
         if let Some(sound) = self.sound.as_mut() {
             sound.iw4_loaded(stream, ty, slot, insert_slot);
+        }
+        if ty == AssetType::StructuredDataDef
+            && let Some(header) = stream.structured_data_def_set()
+        {
+            match asset_game::structured_data::capture_iw4_structured_data_def_set(stream, header) {
+                Ok((name, schema)) => self.scripts.capture_schema(name, schema),
+                Err(error) => diag::warn!(World, "structured-data capture: {error}"),
+            }
         }
         self.materials.loaded(stream, ty, slot, insert_slot)
     }

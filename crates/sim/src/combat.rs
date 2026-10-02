@@ -672,11 +672,17 @@ pub(crate) fn advance_weapon_command(
                     };
                     apply_player_anim_event(world, *id, ANIM_ET_FIREWEAPON);
                     let combat_seed = world.combat_rng_mut().next_u32();
-                    let origin = [
-                        ps.origin[0],
-                        ps.origin[1],
-                        ps.origin[2] + ps.view_height_current,
-                    ];
+                    let origin = world
+                        .client_meta(*id)
+                        .and_then(|meta| meta.linked_weapon_view)
+                        .map_or(
+                            [
+                                ps.origin[0],
+                                ps.origin[1],
+                                ps.origin[2] + ps.view_height_current,
+                            ],
+                            |view| view.origin,
+                        );
 
                     let mut shot_angles = ps.viewangles;
                     for (angle, offset) in shot_angles.iter_mut().zip(cmd.gun_angle_offset) {
@@ -1371,6 +1377,20 @@ pub(crate) fn phase_trace(
                         flesh_flags,
                     });
                 }
+            } else {
+                world.push_pellet_fx(crate::PelletFxRecord {
+                    attacker: em.attacker.0 as i32,
+                    weapon: em.weapon,
+                    correlation: em.shot_id.0,
+                    pellet: em.pellet.0,
+                    hand: em.hand,
+                    start: segment.start,
+                    end: segment.end,
+                    normal: [0.0; 3],
+                    surf_type: segment.surf_type,
+                    surface_flags: segment.surface_flags,
+                    flesh_flags: 0,
+                });
             }
             if exit || !world.publishes_snapshot() || scaled <= 0 {
                 continue;

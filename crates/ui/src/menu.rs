@@ -29,6 +29,7 @@ pub(crate) struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuMapList>()
+            .init_resource::<crate::barracks::BarracksProfile>()
             .init_resource::<crate::ClassLoadoutCatalog>()
             .init_resource::<frame::GameSettings>()
             .init_resource::<crate::BindingView>()
@@ -42,6 +43,8 @@ impl Plugin for MenuPlugin {
                 (
                     crate::options::apply_window_settings,
                     load_class_store,
+                    crate::barracks::load_profile,
+                    crate::barracks::save_profile,
                     sync_host_class_loadouts,
                     save_class_store,
                 )
@@ -55,6 +58,7 @@ pub fn install_frontend_menus(catalog: &mut asset_game::MenuCatalog) -> Result<(
     catalog.load_definitions(include_str!("../menus/frontend.json"))?;
     catalog.load_definitions(include_str!("../menus/connection_error.json"))?;
     catalog.load_definitions(include_str!("../menus/classes.json"))?;
+    catalog.load_definitions(include_str!("../menus/barracks.json"))?;
     catalog.load_definitions(include_str!("../menus/settings.json"))?;
     catalog.load_definitions(include_str!("../menus/controller.json"))?;
     let slider = catalog

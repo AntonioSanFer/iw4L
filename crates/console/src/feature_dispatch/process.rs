@@ -1,11 +1,7 @@
 use std::io::Write;
 
 use bevy::prelude::*;
-use net::{
-    MasterBridge,
-    MasterBridgeState,
-};
-
+use net::{MasterBridge, MasterBridgeState};
 
 const LEAVE_BUDGET: std::time::Duration = std::time::Duration::from_millis(250);
 
@@ -48,4 +44,3 @@ fn leave_master(bridge: &MasterBridge) {
         LEAVE_BUDGET.as_millis()
     );
 }
-

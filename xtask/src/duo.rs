@@ -85,6 +85,7 @@ fn launch(root: &Path, run: &Path, binary: &Path, role: &str) -> Res<Player> {
         .arg("menu")
         .current_dir(&directory)
         .env("IW4L_SETTINGS_PATH", directory.join("settings.cfg"))
+        .env("IW4L_ACCOUNT_PATH", directory.join("account.dat"))
         .env("IW4L_MASTER_STATUS_FILE", directory.join("master.status"))
         .env("IW4L_CONSOLE_STDIN", "1")
         .env("IW4L_PRESENT_MODE", "AutoVsync")

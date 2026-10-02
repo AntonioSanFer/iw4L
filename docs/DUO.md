@@ -30,8 +30,9 @@ quit
 
 Each line is forwarded to the regular console queue. Semicolons separate
 commands; `!` retains its normal meaning of bypassing a wait. `quit` stops the
-pair. Closing either game window also ends the pair. Logs, settings, dumps and
+pair. Closing either game window also ends the pair. Logs, settings, accounts, dumps and
 screenshots are isolated under the run's `host/` and `client/` directories.
+Each player uses its own `account.dat`, overriding an inherited `IW4L_ACCOUNT_PATH`.
 On Unix, the asset cache is shared through symlinks.
 
 For other launch tools, `IW4L_CONSOLE_STDIN=1` enables line-based console input.

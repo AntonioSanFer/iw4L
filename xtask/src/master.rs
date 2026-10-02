@@ -1,10 +1,3 @@
-//! `cargo xtask master …` — a relay of your own on a VPS you rent, installed
-//! over ssh from the machine holding the clone. `docs/MASTER.md` is the prose.
-//!
-//! Nothing here is our release pipeline: no Caddy, no update URL, no channels
-//! to publish between. One binary, one certificate, one unit — and the CA
-//! private key never leaves this machine.
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -107,9 +100,10 @@ pub fn unit_text(
     exec: &str,
     cert: &str,
     key: &str,
-    user: &str,
-    group: &str,
+    updates: &str,
+    owner: (&str, &str),
 ) -> Res<String> {
+    let (user, group) = owner;
     capture(
         Command::new("cargo")
             .current_dir(root)
@@ -118,6 +112,7 @@ pub fn unit_text(
             .args(["--exec", exec])
             .args(["--cert", cert])
             .args(["--key", key])
+            .args(["--updates", updates])
             .args(["--user", user])
             .args(["--group", group]),
     )
@@ -189,8 +184,8 @@ pub fn install(root: &Path, env: &Env, args: &[String]) -> Res<()> {
         &remote_bin(),
         &format!("{REMOTE_ETC}/server-cert.pem"),
         &format!("{REMOTE_ETC}/server-key.pem"),
-        "iw4l",
-        "iw4l",
+        &format!("{REMOTE_LIB}/updates/{channel}"),
+        ("iw4l", "iw4l"),
     )?;
     ssh.feed(
         &format!("cat >'/etc/systemd/system/{}'", channel.unit()),
@@ -200,6 +195,7 @@ pub fn install(root: &Path, env: &Env, args: &[String]) -> Res<()> {
         "set -eu
         if command -v ufw >/dev/null && ufw status | grep -q '^Status: active'; then
           ufw allow {port}/udp
+          ufw allow {port}/tcp
         fi
         systemctl daemon-reload
         systemctl enable --now '{unit}'",
@@ -208,7 +204,7 @@ pub fn install(root: &Path, env: &Env, args: &[String]) -> Res<()> {
     ))?;
     step.done("");
     report(&ssh, channel)?;
-    hand_out(&ssh, channel, &ca);
+    hand_out(&ssh, channel, &ca)?;
     Ok(())
 }
 
@@ -280,22 +276,34 @@ fn report(ssh: &Ssh, channel: Channel) -> Res<()> {
     ))
 }
 
-/// The three lines a player needs, plus the file they have to be given by
-/// hand. The label is the same for everyone, so `ca.pem` is the whole of the
-/// trust: hand it over a channel the players already trust.
-fn hand_out(ssh: &Ssh, channel: Channel, ca: &Ca) {
-    println!();
+fn hand_out(ssh: &Ssh, channel: Channel, ca: &Ca) -> Res<()> {
+    let descriptor = updater::Community {
+        schema: 1,
+        name: format!("IW4L {channel}"),
+        master: updater::Master {
+            address: format!("{}:{}", ssh.host(), channel.port()),
+            server_name: channel.server_name().into(),
+        },
+        updates: updater::Updates {
+            url: format!(
+                "https://{}:{}/updates/manifest.toml",
+                ssh.host(),
+                channel.port()
+            ),
+            ca_pem: std::fs::read_to_string(ca.ca_cert()).map_err(|e| e.to_string())?,
+        },
+    };
+    let path = ca.dir().join(format!("community-{channel}.iw4l-server"));
+    std::fs::write(
+        &path,
+        toml::to_string_pretty(&descriptor).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
     println!(
-        "Give this .env block and {} to your players:",
-        ca.ca_cert().display()
+        "Upload client updates to {REMOTE_LIB}/updates/{channel}, then give {} and iw4l.exe to players over a trusted channel.",
+        path.display()
     );
-    println!();
-    println!("  IW4L_MASTER_ADDR={}:{}", ssh.host(), channel.port());
-    println!("  IW4L_MASTER_SERVER_NAME={}", channel.server_name());
-    println!("  IW4L_MASTER_CA_CERT=/path/to/iw4l-ca.pem");
-    println!();
-    println!("  host a match:  IW4L_MASTER_HOST_NAME='name' make map mp_boneyard");
-    println!("  join:          make menu");
+    Ok(())
 }
 
 pub fn run_cli(root: &Path, env: &Env, args: &[String]) -> Res<()> {

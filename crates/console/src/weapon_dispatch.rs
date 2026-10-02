@@ -152,6 +152,7 @@ pub(crate) fn route_weapon_commands(
     mut inbox: ResMut<ClientActionInbox>,
     mut seq: ResMut<net::ActionRequestIds>,
     completions: Res<WeaponArgCompletions>,
+    authority: Option<Res<net::AuthorityWorld>>,
 ) {
     let capacity = settings.log_capacity;
     let echo = |msg: String, console: &mut ConsoleState, line: &mut ConsoleLine| {
@@ -161,6 +162,16 @@ pub(crate) fn route_weapon_commands(
     };
 
     for cmd in events.read() {
+        if matches!(cmd.name.as_str(), "give" | "attach")
+            && authority.as_ref().is_some_and(|a| !a.0.cheats_enabled())
+        {
+            echo(
+                format!("{}: cheats are off", cmd.name),
+                &mut console,
+                &mut line,
+            );
+            continue;
+        }
         match cmd.name.as_str() {
             "give" => {
                 let target = match parse_give_target(&cmd.args) {

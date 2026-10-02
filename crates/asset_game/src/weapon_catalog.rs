@@ -97,6 +97,8 @@ pub struct WeaponBodyFacts {
 
     pub aim_down_sight: bool,
 
+    pub thermal_scope: bool,
+
     pub ads_zoom_fov: f32,
 
     pub ads_dof: Option<[f32; 2]>,
@@ -1604,6 +1606,7 @@ impl WeaponCatalog {
                 ads_spread: geometry.ads_spread,
                 can_hold_breath: geometry.overlay_reticle != 0 && geometry.weap_class != 11,
                 aim_down_sight: geometry.aim_down_sight,
+                thermal_scope: geometry.thermal_scope,
                 ads_zoom_fov: geometry.ads_zoom_fov,
                 ads_dof: Some(geometry.ads_dof),
                 ads_zoom_in_frac: geometry.ads_zoom_in_frac,

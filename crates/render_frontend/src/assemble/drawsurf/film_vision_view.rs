@@ -220,6 +220,7 @@ pub fn register(app: &mut App) {
         Update,
         update_film_vision_view
             .after(crate::prepare::scene::view_parms::stamp_prepared_scene_view)
+            .after(frame::ScreenEffectsPublished)
             .in_set(net::ClientSet::Present),
     );
 }
@@ -235,6 +236,7 @@ fn update_film_vision_view(
     local: Res<net::LocalPresentClient>,
     mut applied: ResMut<AppliedVision>,
     settings: Res<frame::GameSettings>,
+    screen_effects: Res<frame::ScreenEffectsView>,
 ) {
     if !view.ready {
         applied.vision = None;
@@ -248,10 +250,7 @@ fn update_film_vision_view(
                     .missile_vision
                     .clone()
                     .or_else(|| global.missile_vision.clone())
-            } else if presented
-                .player(local.0)
-                .is_some_and(|ps| ps.other_flags & 0x8 != 0)
-            {
+            } else if screen_effects.thermal_active {
                 effects
                     .thermal_vision
                     .clone()
@@ -286,7 +285,15 @@ fn update_film_vision_view(
                         meta.client_dvars
                             .iter()
                             .chain(s.meta.objectives.server_info.iter())
-                            .any(|(name, _)| sim::is_postfx_dvar(name))
+                            .any(|(name, _)| {
+                                sim::is_postfx_dvar(name)
+                                    && !matches!(
+                                        name.to_ascii_lowercase().as_str(),
+                                        "cg_drawshellshock"
+                                            | "thermalblurfactorscope"
+                                            | "thermalblurfactornoscope"
+                                    )
+                            })
                     })
                 })
                 .unwrap_or(false);

@@ -93,11 +93,20 @@ impl Plugin for ConsolePlugin {
             .init_resource::<crate::weapon_dispatch::WeaponArgCompletions>()
             .init_resource::<crate::user_settings::PendingMenuBinding>()
             .init_resource::<crate::user_settings::UserSettingsPersistence>()
+            .init_resource::<sim::LocalPlayerProfile>()
+            .init_resource::<crate::local_profile::ProfilePersistence>()
+            .init_resource::<crate::local_account::AccountPersistence>()
             .add_message::<ConsoleCommand>()
             .add_message::<frame::TestControllerRumble>()
             .add_systems(
                 Startup,
-                (setup_console, crate::user_settings::load_user_settings).chain(),
+                (
+                    setup_console,
+                    crate::user_settings::load_user_settings,
+                    crate::local_profile::load,
+                    crate::local_account::load,
+                )
+                    .chain(),
             )
             .add_systems(PreUpdate, feed_console_keyboard.before(InputSystems))
             .init_resource::<frame::ActivePad>()
@@ -145,14 +154,23 @@ impl Plugin for ConsolePlugin {
                         apply_console_os_paste,
                         crate::feature_dispatch::route_replay_commands,
                         crate::feature_dispatch::route_ui_commands,
-                        (crate::frontend::route, crate::class_menu::route).chain(),
+                        (
+                            crate::frontend::route,
+                            crate::class_menu::route,
+                            crate::barracks_menu::route,
+                        )
+                            .chain(),
                         crate::feature_dispatch::route_capture_commands,
                         crate::feature_dispatch::route_state_dump_commands,
                         crate::feature_dispatch::route_hitvol_commands,
                         crate::feature_dispatch::route_debug_feature_commands,
                         crate::feature_dispatch::route_session_commands,
                         crate::feature_dispatch::resume_lifecycle_commands,
-                        crate::class_dispatch::route_class_commands,
+                        (
+                            crate::barracks_menu::sync_profile,
+                            crate::class_dispatch::route_class_commands,
+                        )
+                            .chain(),
                         crate::class_dispatch::complete_pending_spawn,
                         crate::weapon_dispatch::clear_weapon_args_on_torn_down,
                         crate::weapon_dispatch::refresh_weapon_arg_completions,
@@ -204,6 +222,8 @@ impl Plugin for ConsolePlugin {
                 Last,
                 (
                     paint_scrollback_selection,
+                    crate::local_profile::save,
+                    crate::local_account::save,
                     crate::feature_dispatch::exit_process,
                 )
                     .chain(),
@@ -737,6 +757,7 @@ fn setup_console(
     crate::feature_dispatch::register_feature_commands(&mut registry, &maps);
     crate::frontend::register(&mut registry);
     crate::class_menu::register(&mut registry);
+    crate::barracks_menu::register(&mut registry);
     let font = fonts.add(Font::from_bytes(EMBEDDED_FONT.to_vec()));
     commands.insert_resource(ConsoleFont(font.clone()));
 

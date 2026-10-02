@@ -6,14 +6,24 @@ use asset_transport::{ensure_artifacts_dir, games_root_from_env};
 static PROCESS_ALLOCATOR: diag::ProcessCountingAllocator = diag::ProcessCountingAllocator;
 
 fn main() {
+    let mut args = match updater::startup().unwrap_or_else(|e| diag::exit_launch_error(&e)) {
+        Some(args) => args,
+        None => return,
+    };
+    if args.is_empty() {
+        args.push("menu".into());
+    }
     bootstrap::bench::arm();
     prepare_process_root().unwrap_or_else(|e| {
         diag::exit_launch_error(&e);
     });
     let artifacts = ensure_artifacts_dir().unwrap_or_else(|e| diag::exit_launch_error(&e));
     announce_log(diag::init_log(&artifacts));
-    let (mode, acceptance, cheats) = bootstrap::parse_cli(std::env::args().skip(1))
-        .unwrap_or_else(|e| diag::exit_launch_error(&e));
+    let (mode, acceptance, cheats) = bootstrap::parse_cli(
+        args.into_iter()
+            .map(|arg| arg.to_string_lossy().into_owned()),
+    )
+    .unwrap_or_else(|e| diag::exit_launch_error(&e));
     let games = games_root_from_env().unwrap_or_else(|e| diag::exit_launch_error(&e));
     bootstrap::launch(games, artifacts, mode, acceptance, cheats);
 }

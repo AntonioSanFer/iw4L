@@ -441,6 +441,7 @@ pub const SND_ALIAS_SOUND_FILE_OFF: usize = 20;
 pub const SND_ALIAS_SEQUENCE_OFF: usize = 24;
 pub const SND_ALIAS_VOL_MIN_OFF: usize = 28;
 pub const SND_ALIAS_VOL_MAX_OFF: usize = 32;
+pub const SND_ALIAS_VOL_MOD_INDEX_OFF: usize = 36;
 pub const SND_ALIAS_PITCH_MIN_OFF: usize = 40;
 pub const SND_ALIAS_PITCH_MAX_OFF: usize = 44;
 pub const SND_ALIAS_DIST_MIN_OFF: usize = 48;
@@ -611,6 +612,7 @@ pub const GFX_WORLD_LIGHT_GRID_OFF: usize = 0xa4;
 pub const GFX_LIGHT_GRID: usize = 0x38;
 pub const GFX_CELL: usize = 0x30;
 pub const GFX_PORTAL: usize = 0x3c;
+pub const GFX_PORTAL_HULL_AXIS: usize = 0x24;
 
 pub const GFX_AABB_TREE: usize = 0x2c;
 pub const GFX_BRUSH_MODEL: usize = 0x3c;

@@ -526,6 +526,8 @@ pub const HUD_CHROME_MENUS: &[&str] = &[
     "dpad_hd",
     "javelin_overlay_hd",
     "missilecam_hud_hd",
+    "remote_chopper_overlay_hd",
+    "ac130_hud_hd",
     "dpad_sd",
     "splash",
     "challenge",

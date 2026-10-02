@@ -214,7 +214,7 @@ fn run_menu(games: asset_transport::GamesRoot, artifacts: PathBuf, cheats: sim::
             "Cannot start the IW4 menu: base MW2 Multiplayer assets were not found.\n\n\
              {content}\n\n\
              The menu requires common_mp.ff with IW4 envelope version 0x114. \
-             Point IW4L_GAMES or a shortcut beside iw4launcher.exe to the folder containing \
+             Point IW4L_GAMES or a shortcut beside iw4l.exe to the folder containing \
              the base MW2 Multiplayer files. If this is the intended folder, restore its \
              missing base files; DLC maps alone are insufficient.\n\nSearch details: {error}"
         ))

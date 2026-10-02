@@ -107,6 +107,11 @@ pub trait AssetLinkSink {
         Ok(())
     }
 
+    fn capture_snd_groups(&mut self, s: &ZoneStream<'_>, rows: Ptr, count: usize) -> Result<()> {
+        let _ = (s, rows, count);
+        Ok(())
+    }
+
     fn capture_raw_file(&mut self, name: &str, data: &[u8], zlib_compressed: bool) -> Result<()> {
         let _ = (name, data, zlib_compressed);
         Ok(())

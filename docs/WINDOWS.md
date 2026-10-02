@@ -1,45 +1,42 @@
 # Portable Windows folder
 
-`make launcher windows` creates `dist/windows/iw4l-windows-{dev,prod}.zip`. Both
-archives use the password `contextrot` and are self-contained — the game binary
-is inside, so the folder runs with no network at all.
+`make launcher windows` creates `dist/windows/iw4l-windows-{dev,prod}.zip`.
+The archive password is `contextrot`. Extract into a dedicated writable folder:
 
 ```text
-iw4l-portable/
-├── iw4launcher.exe       from the archive
-├── iw4l.exe              from the archive; replaced only by `iw4launcher update`
-├── iw4l-ca.pem           public trust anchor
+IW4L/
+├── iw4l.exe
+├── community.iw4l-server
 ├── LICENSE NOTICE OFL-Oxanium.txt COPYING-FreeFont.txt
-├── .env                  from the archive; player edits win forever
-├── Modern Warfare 2.lnk  target: game folder or title .exe
-├── Black Ops.lnk         optional
-├── Modern Warfare 3.lnk  optional
-└── iw4l-artifacts/       saves, caches, demos, logs and captures
+├── Modern Warfare 2.lnk
+├── Black Ops.lnk          optional
+├── Modern Warfare 3.lnk   optional
+└── iw4l-artifacts/        saves, caches, demos, logs and captures
 ```
 
-The four licence files are not decoration: `iw4l.exe` has both fonts compiled in
-with `include_bytes!`, so an archive carrying the binary carries their licences
-too. `release.rs::LEGAL_FILES` is the list; a build shipping without them is a
-bug.
+Add ordinary Windows shortcuts to installed title folders or executables.
+MW2 multiplayer data (`zone/**/common_mp.ff`) is required for the menu;
+BO1 and MW3 are optional. The runtime reads those installations.
 
-Extract into any dedicated folder and add ordinary Windows `.lnk` shortcuts to
-installed Call of Duty title folders or executables. MW2 **Multiplayer** files
-are required for the menu (`zone/**/common_mp.ff`); `zone/dlc/*.ff` alone is
-insufficient. BO1 and MW3 are optional. The launcher starts the game without
-modifying those installations.
+Launch `iw4l.exe`. Before starting the game or contacting QUIC, it checks its
+community's HTTPS manifest. An unchanged executable starts normally. An update
+is downloaded, decompressed with a size limit and verified against SHA-256.
+A temporary copy of the same executable waits for the original process, replaces
+it and restarts with the original arguments. Failed installation or spawning
+restores the previous executable. There is no permanent second executable.
 
-**Updating is something you ask for.** Plain `iw4launcher.exe` starts the
-`iw4l.exe` already in the folder and touches nothing else. Fetching a newer
-build is `iw4launcher.exe update` (or `IW4L_UPDATE=1` for a shortcut that cannot
-pass an argument), which needs `IW4L_UPDATE_URL` in the portable `.env`. No
-build replaces its own binary on its own. Publishing is [`DEPLOY.md`](DEPLOY.md).
+The temporary files are `iw4l.update.exe`, `iw4l.previous.exe` and a helper in
+`%TEMP%`; the next verified startup removes the backup and helper. The lock file
+`iw4l.update.lock` serializes update checks; `iw4l.update-helper` records cleanup.
+An update error stops startup and reports the failure; a configured community requires a reachable update origin.
+Without a community descriptor, local development can launch without checking.
 
-The folder holding the two executables is the process working directory even
-when Explorer supplies another; `IW4L_GAMES` defaults to it, and `.lnk` targets
-inside it are additional read-only search roots. `.env` is loaded before
-release-manifest defaults, created only when missing and never overwritten.
+A descriptor pins a public CA and the master's TLS name for both HTTPS and QUIC.
+Use a descriptor from a trusted source: its operator can distribute executable
+updates. Its settings take precedence over the legacy master environment keys.
+One adjacent `.iw4l-server` is selected automatically; with several, set
+`IW4L_COMMUNITY` to the chosen file path before launching. See [`MASTER.md`](MASTER.md).
 
-`.env` holds `IW4L_UPDATE_URL=https://host:8443/prod` plus the master keys
-from [`MASTER.md`](MASTER.md). An unreachable master is not a launch error: the browser keeps retrying. All
-writable state stays below `iw4l-artifacts/` (including `settings.cfg`, unless
-`IW4L_SETTINGS_PATH` overrides it); shortcut targets are never output paths.
+On Windows the executable directory is the working directory. Game discovery
+uses `IW4L_GAMES` or shortcuts beside `iw4l.exe`; local `.env` settings remain
+available for game configuration. Publishing: [`DEPLOY.md`](DEPLOY.md).

@@ -13,7 +13,9 @@ cargo xtask master logs    root@1.2.3.4 --since 10min
 `install` mints a CA and server certificate under `~/.iw4l/ca`, builds a static
 binary, installs it with the certificates under `/usr/local/lib/iw4l/` and
 `/etc/iw4l/`, writes the unit through `iw4l-master print-unit` and runs
-`enable --now`. The CA key never leaves the local machine. `master update`,
+`enable --now`. It writes a local community descriptor and uses
+`/usr/local/lib/iw4l/updates/{prod,dev}` for update files. Populate that directory
+before handing out the descriptor. The CA key never leaves the local machine. `master update`,
 `status` and `uninstall` follow, each taking `--channel dev` and `--ca DIR`;
 `uninstall` keeps the certificates and CA, so a reinstall stays trusted.
 
@@ -36,19 +38,30 @@ retention. Peer IPs are visible to the kernel and to any packet capture on that
 host while a connection is open, as with any server. Run it for others and that is
 the honest description: it forwards packets and vouches for nobody.
 
-## Hand out to players — this block plus `iw4l-ca.pem`
+## Hand out to players
 
-Give every player these settings and the public CA file over a trusted channel.
-Add the settings to their existing `.env`, replacing the address and CA path:
+Give players a trusted `community.iw4l-server` and the self-updating `iw4l.exe`:
 
-```dotenv
-IW4L_MASTER_ADDR=1.2.3.4:4433
-IW4L_MASTER_SERVER_NAME=iw4l-prod
-IW4L_MASTER_CA_CERT=/path/to/iw4l-ca.pem
+```toml
+schema = 1
+name = "IW4L Community"
+[master]
+address = "1.2.3.4:4433"
+server_name = "iw4l-prod"
+[updates]
+url = "https://1.2.3.4:4433/updates/manifest.toml"
+ca_pem = """
+-----BEGIN CERTIFICATE-----
+... public iw4l-ca.pem contents ...
+-----END CERTIFICATE-----
+"""
 ```
 
-This example is for the default `prod` installation. With `--channel dev`, use
-port `4434` and server name `iw4l-dev` instead.
+Both TCP and UDP allocations must be open. `serve --updates PATH` selects the
+static update directory; its default is `./updates`. Upload the release blob
+before atomically replacing `manifest.toml`; see [`DEPLOY.md`](DEPLOY.md).
+The descriptor overrides legacy master settings below. Without a descriptor,
+local development can still use the existing environment configuration.
 
 | Setting | What it changes and when to set it |
 | --- | --- |
@@ -77,6 +90,5 @@ When a setting appears in more than one place:
   over the repository `.env`, which wins over inherited environment values
   for keys it defines. The Makefile exports these values to the game.
   See GNU make's [environment rules](https://www.gnu.org/software/make/manual/html_node/Environment.html).
-* **Portable Windows launcher:** inherited environment values win over the
-  adjacent `.env`; after an explicit update, release-manifest values fill only
-  settings still unset. See [`WINDOWS.md`](WINDOWS.md) for the portable layout.
+* **Community launch:** the selected descriptor supplies master address, TLS
+  name and CA. See [`WINDOWS.md`](WINDOWS.md) for selection and updating.
