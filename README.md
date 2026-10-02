@@ -17,8 +17,19 @@ Explore maps, fight bots, and record and replay demos. Gameplay remains incomple
 expect missing behavior, bugs and desyncs. The asset readers also cover MW3 and Black
 Ops.
 
-Build from source. APIs, configuration, caches and the wire protocol change between
-commits; multiplayer peers must run the same commit.
+APIs, configuration, caches and the wire protocol change between commits;
+multiplayer peers must run the same build.
+
+## Windows: prebuilt release
+
+1. Download `iw4l-windows.zip` from [Releases](../../releases) and extract it into an
+   empty writable folder. The archive password is `contextrot`.
+2. Next to `iw4l.exe`, add a Windows shortcut to your MW2 installation folder.
+3. Launch `iw4l.exe`.
+
+For online play, put the `.iw4l-server` file you received from a server operator next
+to `iw4l.exe`. With it the game finds that master and updates itself on launch. Details:
+[Windows guide](docs/WINDOWS.md).
 
 ## Build and run
 
@@ -26,7 +37,7 @@ Install Rust through rustup and GNU Make. [Build dependencies](docs/BUILD.md) co
 Linux's C/C++ toolchain and system libraries, and macOS's Xcode command line tools.
 [Windows instructions](docs/WINDOWS.md) cover building and arranging a portable folder.
 
-You need your own installed MW2 Multiplayer data, including `common_mp.ff`. IW4L
+You need your own installed MW2 Multiplayer data. IW4L
 distributes no game assets and reads installations without patching or replacing their
 files. Caches, demos and logs go under `iw4l-artifacts/`; Linux settings use a separate
 configuration directory described in the [run guide](docs/RUN.md).

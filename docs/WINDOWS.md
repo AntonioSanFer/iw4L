@@ -1,6 +1,9 @@
 # Portable Windows folder
 
-`make launcher windows` creates `dist/windows/iw4l-windows-{dev,prod}.zip`.
+Players download `iw4l-windows.zip` from the GitHub release; it holds the executable
+and licences. A server operator hands out the `.iw4l-server` descriptor separately.
+`make release prod|dev` also writes `iw4l-windows-{dev,prod}.zip` with the descriptor
+included, and `make launcher windows` writes the same pair under `dist/windows/`.
 The archive password is `contextrot`. Extract into a dedicated writable folder:
 
 ```text
@@ -15,8 +18,8 @@ IW4L/
 ```
 
 Add ordinary Windows shortcuts to installed title folders or executables.
-MW2 multiplayer data (`zone/**/common_mp.ff`) is required for the menu;
-BO1 and MW3 are optional. The runtime reads those installations.
+MW2 multiplayer data is required for the menu; BO1 and MW3 are optional.
+The runtime reads those installations.
 
 Launch `iw4l.exe`. Before starting the game or contacting QUIC, it checks its
 community's HTTPS manifest. An unchanged executable starts normally. An update

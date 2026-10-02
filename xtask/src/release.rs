@@ -399,7 +399,10 @@ pub fn prepare(root: &Path, env: &Env, channel: Channel, profile: &str) -> Res<P
     player_archive(
         &dest.join("client"),
         &dest.join(format!("iw4l-windows-{channel}.zip")),
+        true,
     )?;
+    // The GitHub download: the descriptor names the master, which stays private.
+    player_archive(&dest.join("client"), &dest.join("iw4l-windows.zip"), false)?;
     println!("release.done path=dist/releases/{channel}/{release_id}");
     Ok(dest)
 }
@@ -439,14 +442,17 @@ pub fn bundles(root: &Path, env: &Env, profile: &str) -> Res<()> {
             &community(channel, &host, &ca_cert)?,
         )?;
         let archive = out.join(format!("iw4l-windows-{channel}.zip"));
-        player_archive(&stage, &archive)?;
+        player_archive(&stage, &archive, true)?;
         println!("[windows] {channel} archive: {}", archive.display());
     }
     Ok(())
 }
 
-fn player_archive(stage: &Path, archive: &Path) -> Res<()> {
-    let mut names = vec!["iw4l.exe", "community.iw4l-server"];
+fn player_archive(stage: &Path, archive: &Path, descriptor: bool) -> Res<()> {
+    let mut names = vec!["iw4l.exe"];
+    if descriptor {
+        names.push("community.iw4l-server");
+    }
     names.extend(LEGAL_FILES.iter().map(|(_, to)| *to));
     let files = names
         .into_iter()

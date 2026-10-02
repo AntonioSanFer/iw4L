@@ -79,7 +79,7 @@ make map mp_boneyard IW4L_MASTER_HOST_NAME='Friday match' IW4L_MASTER_MAX_PLAYER
 ```
 
 Other players open `make menu` and select the room. Master networking needs
-MW2 multiplayer data (`common_mp.ff`); it is disabled during demo replay.
+MW2 multiplayer data; it is disabled during demo replay.
 
 When a setting appears in more than one place:
 
