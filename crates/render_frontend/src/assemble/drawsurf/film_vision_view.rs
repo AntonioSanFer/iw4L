@@ -209,6 +209,7 @@ pub fn presented_film_vision_with_lerp(
 #[derive(Resource, Default)]
 struct AppliedVision {
     vision: Option<Option<sim::VisionChange>>,
+    instant_thermal: bool,
     pain: Option<Option<sim::VisionChange>>,
     pain_slot: FilmVisionView,
     pain_strength: f32,
@@ -301,9 +302,13 @@ fn update_film_vision_view(
             let preset = wanted
                 .as_ref()
                 .and_then(|vision| loaded_script_vision(&scene, vision));
-            let duration_ms = match (&applied.vision, &wanted) {
-                (Some(_), Some(vision)) => vision.duration_ms,
-                _ => 0,
+            let duration_ms = if screen_effects.instant_thermal || applied.instant_thermal {
+                0
+            } else {
+                match (&applied.vision, &wanted) {
+                    (Some(_), Some(vision)) => vision.duration_ms,
+                    _ => 0,
+                }
             };
             film.select(
                 scene.film_vision,
@@ -315,6 +320,7 @@ fn update_film_vision_view(
             );
             applied.vision = Some(wanted);
         }
+        applied.instant_thermal = screen_effects.instant_thermal;
     }
     let script_forced = film.script_forced;
     let mixed = presented_film_vision_with_lerp(

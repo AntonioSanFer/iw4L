@@ -24,8 +24,9 @@ multiplayer peers must run the same build.
 
 1. Download `iw4l-windows.zip` from [Releases](../../releases) and extract it into an
    empty writable folder. The archive password is `t.me/contextrot`.
-2. Next to `iw4l.exe`, add a Windows shortcut to your MW2 installation folder.
-3. Launch `iw4l.exe`.
+2. Launch `iw4l.exe`. It finds MW2 in your Steam libraries and creates a
+   `Modern Warfare 2.lnk` shortcut next to itself. For an install outside Steam, create
+   that shortcut to your MW2 folder yourself.
 
 For online play, put the `.iw4l-server` file you received from a server operator next
 to `iw4l.exe`. With it the game finds that master and updates itself on launch. Details:

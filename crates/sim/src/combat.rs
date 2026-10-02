@@ -1060,7 +1060,12 @@ pub(crate) fn phase_emit(world: &FrameWorld, shots: &[AcceptedShot]) -> Vec<Emis
             _ => continue,
         }
         let mut rng = MatchRng::new(shot.combat_seed as u64);
-        let pellet_count = facts.pellet_count().clamp(1, u16::MAX as i32) as u16;
+        let barrels = if facts.fire_type == 5 {
+            shot.ammo_used.max(1)
+        } else {
+            1
+        };
+        let pellet_count = (facts.pellet_count() * barrels).clamp(1, u16::MAX as i32) as u16;
         for pellet in 0..pellet_count {
             out.push(Emission {
                 combat_seed: shot.combat_seed,

@@ -2258,13 +2258,13 @@ fn drain_weapon_fire_fx(
         }
 
         let local_number = i32::try_from(local.0.0).unwrap_or(-1);
-        let is_grenade = weapons.as_deref().is_some_and(|weapons| {
+        let hide_fire_ping = weapons.as_deref().is_some_and(|weapons| {
             weapons
                 .0
                 .facts_of(fire.event.payload.weapon)
-                .is_some_and(|facts| facts.weap_type == WEAPTYPE_GRENADE)
+                .is_some_and(|facts| facts.weap_type == WEAPTYPE_GRENADE || facts.silenced)
         });
-        if fire.event.payload.number != local_number && !player_view && !is_grenade {
+        if fire.event.payload.number != local_number && !player_view && !hide_fire_ping {
             ping_bus.pings.push(WeaponFirePing {
                 number: fire.event.payload.number,
                 origin_xy: [fire.event.payload.origin[0], fire.event.payload.origin[1]],

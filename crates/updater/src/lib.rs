@@ -145,6 +145,12 @@ pub fn startup() -> Result<Option<Vec<OsString>>> {
         .address
         .to_socket_addrs()
         .map_err(|e| format!("master address: {e}"))?;
+    if !cfg!(windows) {
+        SELECTED
+            .set(community)
+            .map_err(|_| "community already selected")?;
+        return Ok(Some(args));
+    }
     let lock = OpenOptions::new()
         .read(true)
         .write(true)

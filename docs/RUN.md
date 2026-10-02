@@ -1,7 +1,8 @@
 # Run and poke the live game
 
 How to touch the live process. Observation is [`PERF.md`](PERF.md).
-Two players through the master: [`make duo`](DUO.md).
+Two players through the dev master: `make approved SCENARIO=master_duo_chaos`
+([scenario and setup](../crates/approved_tests/README.md#two-clients-through-the-dev-master)).
 
 ```bash
 set -a; . ./.env; set +a          # IW4L_GAMES; DISPLAY=:0 if the session has none

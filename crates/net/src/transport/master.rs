@@ -1,9 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::fs::File;
-use std::io::BufReader;
 use std::net::ToSocketAddrs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -19,8 +17,6 @@ use master_protocol::{
     stream_frame_len,
 };
 use quinn::crypto::rustls::QuicClientConfig;
-use rustls::pki_types::CertificateDer;
-use rustls_platform_verifier::ConfigVerifierExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::authority::runtime::AuthorityWorld;
@@ -268,8 +264,7 @@ fn forget_relay_member(
 struct MasterTarget {
     address: String,
     server_name: String,
-    ca_cert: Option<PathBuf>,
-    ca_pem: Option<String>,
+    ca_pem: String,
 }
 
 fn master_target() -> Result<Option<MasterTarget>> {
@@ -277,20 +272,10 @@ fn master_target() -> Result<Option<MasterTarget>> {
         return Ok(Some(MasterTarget {
             address: community.master.address.clone(),
             server_name: community.master.server_name.clone(),
-            ca_cert: None,
-            ca_pem: Some(community.updates.ca_pem.clone()),
+            ca_pem: community.updates.ca_pem.clone(),
         }));
     }
-    let Ok(address) = std::env::var("IW4L_MASTER_ADDR") else {
-        return Ok(None);
-    };
-    Ok(Some(MasterTarget {
-        address,
-        server_name: std::env::var("IW4L_MASTER_SERVER_NAME")
-            .map_err(|_| "IW4L_MASTER_ADDR requires IW4L_MASTER_SERVER_NAME")?,
-        ca_cert: std::env::var_os("IW4L_MASTER_CA_CERT").map(PathBuf::from),
-        ca_pem: None,
-    }))
+    Ok(None)
 }
 
 #[derive(Clone, Debug)]
@@ -375,7 +360,7 @@ impl MasterLaunchIntent {
             (Some(_), Some(_)) => {
                 Err("set only one of IW4L_MASTER_HOST_NAME or IW4L_MASTER_JOIN".into())
             }
-            _ => Err("IW4L_MASTER_ADDR requires IW4L_MASTER_HOST_NAME or IW4L_MASTER_JOIN".into()),
+            _ => Err("community master requires IW4L_MASTER_HOST_NAME or IW4L_MASTER_JOIN".into()),
         }
     }
 
@@ -3159,21 +3144,9 @@ async fn connect(
         .to_socket_addrs()?
         .next()
         .ok_or_else(|| format!("{} resolved no addresses", target.address))?;
-    let mut crypto = if let Some(pem) = &target.ca_pem {
-        rustls::ClientConfig::builder()
-            .with_root_certificates(updater::trust_roots(pem)?)
-            .with_no_client_auth()
-    } else if let Some(path) = target.ca_cert.as_deref() {
-        let mut roots = rustls::RootCertStore::empty();
-        for cert in load_certificates(path)? {
-            roots.add(cert)?;
-        }
-        rustls::ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth()
-    } else {
-        rustls::ClientConfig::with_platform_verifier()?
-    };
+    let mut crypto = rustls::ClientConfig::builder()
+        .with_root_certificates(updater::trust_roots(&target.ca_pem)?)
+        .with_no_client_auth();
     crypto.alpn_protocols = vec![ALPN.to_vec()];
     let mut client_config = quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(crypto)?));
     let mut transport = quinn::TransportConfig::default();
@@ -3192,11 +3165,7 @@ async fn connect(
     let mut endpoint = quinn::Endpoint::client(bind.parse()?)?;
     endpoint.set_default_client_config(client_config);
     let local = endpoint.local_addr()?;
-    let trust = if target.ca_cert.is_some() || target.ca_pem.is_some() {
-        "custom-ca"
-    } else {
-        "platform"
-    };
+    let trust = "community-ca";
     diag::info!(
         Net,
         "master quic handshake begin local={} remote={} server_name={} trust={} alpn={:?}",
@@ -3228,14 +3197,6 @@ async fn connect(
     Ok((endpoint, connection))
 }
 
-fn load_certificates(path: &Path) -> Result<Vec<CertificateDer<'static>>> {
-    let mut reader = BufReader::new(File::open(path)?);
-    let certs: Vec<_> = rustls_pemfile::certs(&mut reader).collect::<std::io::Result<_>>()?;
-    if certs.is_empty() {
-        return Err(format!("{} contains no certificates", path.display()).into());
-    }
-    Ok(certs)
-}
 fn handshake_for_match(
     world: Option<&sim::SimWorld>,
     descriptor: Option<&MatchDescriptor>,

@@ -197,6 +197,8 @@ version = "0.1.0"
 dependencies = [
  "asset_transport",
  "serde_json",
+ "toml",
+ "updater",
 ]
 
 [[package]]
@@ -403,6 +405,8 @@ dependencies = [
  "flate2",
  "lnk",
  "miniz_oxide",
+ "windows",
+ "windows-sys 0.61.2",
  "zip",
 ]
 
@@ -2585,6 +2589,7 @@ dependencies = [
  "mimalloc",
  "serde",
  "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4237,8 +4242,6 @@ dependencies = [
  "quinn",
  "ring",
  "rustls",
- "rustls-pemfile",
- "rustls-platform-verifier",
  "sim",
  "structured_data_iw4",
  "tokio",

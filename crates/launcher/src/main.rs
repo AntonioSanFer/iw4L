@@ -5,7 +5,33 @@ use asset_transport::{ensure_artifacts_dir, games_root_from_env};
 #[global_allocator]
 static PROCESS_ALLOCATOR: diag::ProcessCountingAllocator = diag::ProcessCountingAllocator;
 
+const LICENSES: [(&str, &str); 5] = [
+    ("LICENSE", include_str!("../../../LICENSE")),
+    ("NOTICE", include_str!("../../../NOTICE")),
+    (
+        "OFL-Oxanium.txt",
+        include_str!("../../ui/assets/OFL-Oxanium.txt"),
+    ),
+    (
+        "COPYING-FreeFont.txt",
+        include_str!("../../console/assets/COPYING-FreeFont.txt"),
+    ),
+    (
+        "THIRD-PARTY-LICENSES.txt",
+        include_str!("../../../THIRD-PARTY-LICENSES.txt"),
+    ),
+];
+
 fn main() {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "licenses")
+    {
+        for (name, text) in LICENSES {
+            println!("==> {name} <==\n\n{text}\n");
+        }
+        return;
+    }
     let mut args = match updater::startup().unwrap_or_else(|e| diag::exit_launch_error(&e)) {
         Some(args) => args,
         None => return,

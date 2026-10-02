@@ -256,7 +256,9 @@ fn spawn_vehicle(
     runtime.set_object_field(id, "origin", Value::Vector(origin));
     runtime.set_object_field(id, "angles", Value::Vector(angles));
     runtime.set_object_field(id, "model", Value::string(model));
-    runtime.entities.get_mut(&id).unwrap().presence = Some(presence);
+    let entity = runtime.entities.get_mut(&id).unwrap();
+    entity.presence = Some(presence);
+    entity.can_damage = true;
     if let Some(mut flight) = flight {
         flight.slot = slot.unwrap();
         flight.heading = math_iw4::angle_vectors(angles).0;

@@ -1,7 +1,7 @@
 # Portable Windows folder
 
-Players download `iw4l-windows.zip` from the GitHub release; it holds the executable
-and licences. A server operator hands out the `.iw4l-server` descriptor separately.
+Players download `iw4l-windows.zip` from the GitHub release; it holds the executable.
+A server operator hands out the `.iw4l-server` descriptor separately.
 `make release prod|dev` also writes `iw4l-windows-{dev,prod}.zip` with the descriptor
 included, and `make launcher windows` writes the same pair under `dist/windows/`.
 The archive password is `t.me/contextrot`. Extract into a dedicated writable folder:
@@ -9,17 +9,22 @@ The archive password is `t.me/contextrot`. Extract into a dedicated writable fol
 ```text
 IW4L/
 ├── iw4l.exe
-├── community.iw4l-server
-├── LICENSE NOTICE OFL-Oxanium.txt COPYING-FreeFont.txt
 ├── Modern Warfare 2.lnk
-├── Black Ops.lnk          optional
-├── Modern Warfare 3.lnk   optional
-└── iw4l-artifacts/        saves, caches, demos, logs and captures
+├── Black Ops.lnk            optional
+├── Modern Warfare 3.lnk     optional
+├── community.iw4l-server    optional
+└── iw4l-artifacts/          created on first launch: saves, caches, demos, logs
 ```
 
-Add ordinary Windows shortcuts to installed title folders or executables.
-MW2 multiplayer data is required for the menu; BO1 and MW3 are optional.
-The runtime reads those installations.
+`iw4l.exe licenses` prints the licence and notice texts compiled into the executable.
+
+The runtime reads the installations those shortcuts point to. MW2 multiplayer data
+is required for the menu; BO1 and MW3 are optional. Without `Modern Warfare 2.lnk`
+and without MW2 in the folder or its shortcuts, `iw4l.exe` looks in the Steam
+libraries and, when exactly one has MW2 multiplayer data, creates
+`Modern Warfare 2.lnk` to it. Otherwise it shows the folders it tried and how to
+add the shortcut by hand: right-click inside the folder, New > Shortcut, paste the
+MW2 folder path.
 
 Launch `iw4l.exe`. Before starting the game or contacting QUIC, it checks its
 community's HTTPS manifest. An unchanged executable starts normally. An update
@@ -41,5 +46,5 @@ One adjacent `.iw4l-server` is selected automatically; with several, set
 `IW4L_COMMUNITY` to the chosen file path before launching. See [`MASTER.md`](MASTER.md).
 
 On Windows the executable directory is the working directory. Game discovery
-uses `IW4L_GAMES` or shortcuts beside `iw4l.exe`; local `.env` settings remain
+uses `IW4L_GAMES` or shortcuts beside `iw4l.exe`, then Steam for MW2; local `.env` settings remain
 available for game configuration. Publishing: [`DEPLOY.md`](DEPLOY.md).

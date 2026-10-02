@@ -601,7 +601,8 @@ pub(crate) fn resolve_give_id(
     if let Some(family) = family {
         return resolve(WeaponSelection::with(family.key.clone(), attachments));
     }
-    let id = match registry.resolve_index(raw) {
+    let canonical = asset_game::FamilyKey::parse(raw).map(|key| key.asset_key());
+    let id = match registry.resolve_index(canonical.as_deref().unwrap_or(raw)) {
         Ok(Some(id)) => id,
         Ok(None) => return Err("empty weapon name".into()),
         Err(_) => {
@@ -708,6 +709,30 @@ pub fn weapon_completions(weapons: &PreparedWeapons) -> Vec<String> {
         })
         .map(|family| family.key.short())
         .collect();
+    names.extend((1..weapons.0.len() as u32).filter_map(|id| {
+        if weapons.0.describe_configuration(id).is_some()
+            || weapons.0.gun_xmodel_of(id).is_none()
+            || weapons.0.configuration_admission(id).is_err()
+        {
+            return None;
+        }
+        let facts = weapons.0.facts_of(id)?;
+        if facts.inventory_type != 0 || facts.offhand_class != 0 {
+            return None;
+        }
+        let key = asset_game::FamilyKey::new(weapons.0.namespace_of(id)?, weapons.0.name_of(id));
+        if weapons.0.weapon_families().families().iter().any(|family| {
+            family.key.namespace == key.namespace
+                && (key.base == family.key.base
+                    || key
+                        .base
+                        .strip_prefix(&family.key.base)
+                        .is_some_and(|suffix| suffix.starts_with('_') || suffix == "dw"))
+        }) {
+            return None;
+        }
+        Some(key.short())
+    }));
     names.sort();
     names.dedup();
     names

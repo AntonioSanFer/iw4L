@@ -383,6 +383,19 @@ pub(crate) fn stand_in_for(world: &mut World, slot: usize, weapon: u32) -> Optio
     {
         return frame.weapon_index_by_script_name("riotshield_mp");
     }
+    if realm == crate::script::Realm::Iw4
+        && let Some(facts) = frame.missile_launch_facts(weapon)
+        && facts.require_lock_to_fire
+    {
+        let launcher = match facts.missile_guidance {
+            1 => Some("stinger_mp"),
+            3 => Some("javelin_mp"),
+            _ => None,
+        };
+        if let Some(launcher) = launcher {
+            return frame.weapon_index_by_script_name(launcher);
+        }
+    }
     let stand_ins = if realm == crate::script::Realm::T5 {
         T5_STAND_INS
     } else {
@@ -410,13 +423,27 @@ pub(crate) fn bridged_weapon(world: &World, client: u32, weapon: u32) -> u32 {
         .map_or(weapon, |(_, native)| *native)
 }
 
-pub(crate) fn script_weapon(world: &World, client: u32, weapon: u32) -> u32 {
-    world
+pub(crate) fn script_weapon(world: &mut World, client: u32, weapon: u32) -> u32 {
+    if let Some(stand_in) = world
         .resource::<Runtime>()
         .weapon_bridge
         .get(&client)
         .and_then(|bridge| bridge.iter().find(|(_, native)| *native == weapon))
-        .map_or(weapon, |(stand_in, _)| *stand_in)
+        .map(|(stand_in, _)| *stand_in)
+    {
+        return stand_in;
+    }
+    let needs_lock_bridge = FrameWorld::from_world(world)
+        .missile_launch_facts(weapon)
+        .is_some_and(|facts| facts.require_lock_to_fire && matches!(facts.missile_guidance, 1 | 3));
+    if needs_lock_bridge
+        && world.resource::<Runtime>().players.contains_key(&client)
+        && let Some(stand_in) = stand_in_for(world, 1, weapon)
+    {
+        bridge_class_weapon(world, client, 1, weapon);
+        return stand_in;
+    }
+    weapon
 }
 
 pub(crate) fn personal_class(

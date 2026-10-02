@@ -521,11 +521,11 @@
       "float_exp": [
         [
           1,
-          "38"
+          "24"
         ],
         [
           3,
-          "148"
+          "176"
         ]
       ],
       "handlers": {
@@ -544,6 +544,15 @@
       }
     },
     "item_overrides": [
+      {"index": 2, "fields": {"rect": {"h": 176}, "float_exp": []}},
+      {"index": 5, "fields": {"rect": {"h": 176}, "float_exp": []}},
+      {"index": 8, "fields": {"rect": {"h": 176}, "float_exp": []}},
+      {"index": 12, "fields": {"rect": {"h": 176}, "float_exp": []}},
+      {"index": 13, "fields": {"rect": {"y": 176}, "float_exp": []}},
+      {"index": 14, "fields": {"rect": {"y": 176}, "float_exp": []}},
+      {"index": 15, "fields": {"rect": {"y": 176}, "float_exp": []}},
+      {"index": 16, "fields": {"rect": {"h": 176}, "float_exp": []}},
+      {"index": 17, "fields": {"rect": {"h": 176}, "float_exp": []}},
       {
         "index": 19,
         "fields": {

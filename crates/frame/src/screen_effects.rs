@@ -6,6 +6,7 @@ pub struct ScreenEffectsView {
     pub default_killcam_view: bool,
     pub thermal_active: bool,
     pub thermal_scoped: bool,
+    pub instant_thermal: bool,
     pub suppressed: bool,
     pub blend_ms: i32,
     pub flashed: bool,

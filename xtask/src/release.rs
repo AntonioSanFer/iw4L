@@ -317,7 +317,6 @@ pub fn prepare(root: &Path, env: &Env, channel: Channel, profile: &str) -> Res<P
         &community(channel, &host, &ca_cert)?,
     )?;
     for (from, to) in LEGAL_FILES {
-        copy(&root.join(from), &client_dir.join(to))?;
         copy(&root.join(from), &stage.join("server").join(to))?;
     }
     copy(&ca_cert, &client_dir.join("iw4l-ca.pem"))?;
@@ -434,9 +433,6 @@ pub fn bundles(root: &Path, env: &Env, profile: &str) -> Res<()> {
         std::fs::create_dir_all(&stage)
             .map_err(|error| format!("creating {}: {error}", stage.display()))?;
         copy(&bins.game, &stage.join("iw4l.exe"))?;
-        for (from, to) in LEGAL_FILES {
-            copy(&root.join(from), &stage.join(to))?;
-        }
         write_toml(
             &stage.join("community.iw4l-server"),
             &community(channel, &host, &ca_cert)?,
@@ -453,7 +449,6 @@ fn player_archive(stage: &Path, archive: &Path, descriptor: bool) -> Res<()> {
     if descriptor {
         names.push("community.iw4l-server");
     }
-    names.extend(LEGAL_FILES.iter().map(|(_, to)| *to));
     let files = names
         .into_iter()
         .map(|n| stage.join(n).display().to_string())
@@ -544,6 +539,7 @@ pub fn run_cli(root: &Path, env: &Env, args: &[String]) -> Res<()> {
         .map(String::as_str)
         .ok_or("usage: cargo xtask release <prod|dev|bundles>")?;
     let profile = windows::profile(env)?;
+    crate::licenses::check(root)?;
     if what == "bundles" {
         return bundles(root, env, &profile);
     }

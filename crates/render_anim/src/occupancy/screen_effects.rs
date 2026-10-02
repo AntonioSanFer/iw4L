@@ -114,7 +114,12 @@ pub(super) fn update(
     } else {
         0
     };
-    let thermal_blend = if thermal {
+    let instant_thermal = thermal
+        && scoped
+        && weapons.as_ref().is_some_and(|w| {
+            w.0.namespace_of(get_viewmodel_weapon_index(ps)) == Some(asset_core::AssetNamespace::T5)
+        });
+    let thermal_blend = if thermal && !instant_thermal {
         if scoped {
             dvars.thermal_scope_ms
         } else if ps.other_flags & 8 != 0 {
@@ -134,6 +139,7 @@ pub(super) fn update(
             ),
         thermal_active: thermal,
         thermal_scoped: scoped,
+        instant_thermal,
         suppressed,
         flashed,
         blend_ms: if suppressed || flashed {

@@ -171,6 +171,7 @@ pub struct MenuDef {
     pub window_background: String,
     pub expr_dvars: String,
     pub fullscreen: i32,
+    pub static_flags: i32,
     pub focus_color: Option<[f32; 4]>,
 
     pub rect: MenuRect,
@@ -1225,6 +1226,7 @@ impl AssetLinkSink for MenuSink {
         def.window_background = rec.window_background.to_owned();
         def.set_expr_dvars(rec.expr_dvars.to_owned());
         def.fullscreen = rec.fullscreen;
+        def.static_flags = rec.static_flags;
         def.focus_color = Some(rec.focus_color);
         def.rect = MenuRect::from(rec.rect);
         Ok(())

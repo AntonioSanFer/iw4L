@@ -126,6 +126,7 @@ pub fn launch(
     acceptance: Option<AcceptanceLaunch>,
     cheats: sim::HostCheats,
 ) {
+    let steam = asset_transport::link_steam_mw2(&games);
     diag::info!(Launch, "{}", asset_transport::games_root_report(&games));
 
     if let Some(plan) = crate::frame_owner::prefer_performance_cores() {
@@ -146,7 +147,7 @@ pub fn launch(
                     render::diag::acceptance::ACCEPTANCE_MAPS.join(", ")
                 ));
             }
-            run_menu(games, artifacts, cheats);
+            run_menu(games, artifacts, cheats, &steam);
         }
         LaunchMode::Map(zone) => run_map(
             games,
@@ -206,18 +207,67 @@ fn run_export_gltf(games: asset_transport::GamesRoot, artifacts: PathBuf, zone_a
     diag::announce_stdout(&summary.report_line());
 }
 
-fn run_menu(games: asset_transport::GamesRoot, artifacts: PathBuf, cheats: sim::HostCheats) {
+fn mw2_not_found(
+    games: &asset_transport::GamesRoot,
+    steam: &asset_transport::SteamProbe,
+) -> String {
+    use asset_transport::SteamCandidate;
+    let mut text = "MW2 Multiplayer was not found.\n\n\
+        Put a shortcut to the game folder next to iw4l.exe:\n\
+        1. In Steam, right-click Call of Duty: Modern Warfare 2 > Manage > Browse local \
+        files and copy the folder path from the address bar.\n\
+        2. In the folder with iw4l.exe, right-click > New > Shortcut, paste the path and \
+        name the shortcut Modern Warfare 2.\n\
+        3. Launch iw4l.exe again.\n\nSearched:\n"
+        .to_owned();
+    for folder in asset_transport::search_roots(&games.0) {
+        text.push_str(&format!("  {}\n", folder.display()));
+    }
+    if !cfg!(windows) {
+        return text;
+    }
+    if games.0.join(asset_transport::MW2_SHORTCUT).exists() {
+        text.push_str(&format!(
+            "{} already exists, so Steam was not searched.\n",
+            asset_transport::MW2_SHORTCUT
+        ));
+    } else if !steam.steam_found {
+        text.push_str("Steam was not found on this PC.\n");
+    } else {
+        text.push_str("Tried in Steam:\n");
+        for (folder, candidate) in &steam.tried {
+            let outcome = match candidate {
+                SteamCandidate::Missing => "not installed here".to_owned(),
+                SteamCandidate::NoMultiplayerData => {
+                    "multiplayer data is missing; verify the game files in Steam".to_owned()
+                }
+                SteamCandidate::Linked => "linked, but the game data could not be read".to_owned(),
+                SteamCandidate::OneOfSeveral => {
+                    "one of several installs; put a shortcut to the one to use".to_owned()
+                }
+                SteamCandidate::ShortcutFailed(error) => {
+                    format!("found, but the shortcut was not created: {error}")
+                }
+            };
+            text.push_str(&format!("  {}: {outcome}\n", folder.display()));
+        }
+    }
+    text
+}
+
+fn run_menu(
+    games: asset_transport::GamesRoot,
+    artifacts: PathBuf,
+    cheats: sim::HostCheats,
+    steam: &asset_transport::SteamProbe,
+) {
     start_perf(None, "menu");
     let ui_games = asset_game::ui_games_root(&games).unwrap_or_else(|error| {
-        let content = asset_transport::games_content_report(&games).join("\n");
-        fatal(&format!(
-            "Cannot start the IW4 menu: base MW2 Multiplayer assets were not found.\n\n\
-             {content}\n\n\
-             The menu requires common_mp.ff with IW4 envelope version 0x114. \
-             Point IW4L_GAMES or a shortcut beside iw4l.exe to the folder containing \
-             the base MW2 Multiplayer files. If this is the intended folder, restore its \
-             missing base files; DLC maps alone are insufficient.\n\nSearch details: {error}"
-        ))
+        for line in asset_transport::games_content_report(&games) {
+            diag::warn!(Launch, "{line}");
+        }
+        diag::warn!(Launch, "{error}");
+        fatal(&mw2_not_found(&games, steam))
     });
     let shell_common = assets::load_pool().spawn(assets::load_shell_common(games.clone()));
     let (mut menus, menu_report) = load_ui_menu_catalog(&ui_games);

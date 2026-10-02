@@ -841,11 +841,13 @@ fn register_entities(registry: &mut NativeRegistry) {
         } else {
             None
         };
-        let presence = if classname == "script_model" {
+        let presence = if matches!(classname.as_str(), "script_model" | "script_origin") {
             Some(super::super::presence::spawn_presence(world, origin)?)
         } else {
             None
         };
+        let number =
+            presence.and_then(|id| crate::frame::FrameWorld::from_world(world).gentity_number(id));
         let mut runtime = runtime(world);
         let id = runtime.create_entity(EntityKind::Spawned, &classname)?;
         runtime.set_object_field(id, "origin", Value::Vector(origin));
@@ -854,6 +856,9 @@ fn register_entities(registry: &mut NativeRegistry) {
         let entity = runtime.entities.get_mut(&id).unwrap();
         entity.cylinder = cylinder;
         entity.presence = presence;
+        if let Some(number) = number {
+            entity.number = number;
+        }
         Ok(Value::Object(id))
     });
     registry.register(Function, "sortbydistance", |world, _, args| {
