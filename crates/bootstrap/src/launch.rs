@@ -126,7 +126,7 @@ pub fn launch(
     acceptance: Option<AcceptanceLaunch>,
     cheats: sim::HostCheats,
 ) {
-    let steam = asset_transport::link_steam_mw2(&games);
+    let steam = asset_transport::link_steam_games(&games);
     diag::info!(Launch, "{}", asset_transport::games_root_report(&games));
 
     if let Some(plan) = crate::frame_owner::prefer_performance_cores() {
@@ -235,7 +235,11 @@ fn mw2_not_found(
         text.push_str("Steam was not found on this PC.\n");
     } else {
         text.push_str("Tried in Steam:\n");
-        for (folder, candidate) in &steam.tried {
+        for (_, folder, candidate) in steam
+            .tried
+            .iter()
+            .filter(|(game, _, _)| *game == asset_core::ZoneGame::Iw4)
+        {
             let outcome = match candidate {
                 SteamCandidate::Missing => "not installed here".to_owned(),
                 SteamCandidate::NoMultiplayerData => {

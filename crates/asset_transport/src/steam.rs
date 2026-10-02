@@ -4,16 +4,17 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::ZoneGame;
 use crate::discover::GamesRoot;
 #[cfg(windows)]
-use crate::discover::{IW4_ZONE_VERSION, peek_zone_version, search_roots};
+use crate::discover::{search_roots, zone_game_for_path};
 
 pub const MW2_SHORTCUT: &str = "Modern Warfare 2.lnk";
 
 #[derive(Clone, Debug, Default)]
 pub struct SteamProbe {
     pub steam_found: bool,
-    pub tried: Vec<(PathBuf, SteamCandidate)>,
+    pub tried: Vec<(ZoneGame, PathBuf, SteamCandidate)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,47 +27,67 @@ pub enum SteamCandidate {
 }
 
 #[cfg(windows)]
-pub fn link_steam_mw2(root: &GamesRoot) -> SteamProbe {
+pub fn link_steam_games(root: &GamesRoot) -> SteamProbe {
     let mut probe = SteamProbe::default();
-    let link = root.0.join(MW2_SHORTCUT);
-    if link.exists() || has_mw2(&search_roots(&root.0)) {
+    let roots = search_roots(&root.0);
+    let titles = [
+        (ZoneGame::Iw4, MW2_SHORTCUT, "Call of Duty Modern Warfare 2"),
+        (
+            ZoneGame::Iw5,
+            "Modern Warfare 3.lnk",
+            "Call of Duty Modern Warfare 3",
+        ),
+        (ZoneGame::T5, "Black Ops.lnk", "Call of Duty Black Ops"),
+    ];
+    let missing = titles
+        .into_iter()
+        .filter(|(game, shortcut, _)| !root.0.join(shortcut).exists() && !has_game(&roots, *game))
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
         return probe;
     }
     let libraries = steam_libraries();
     probe.steam_found = !libraries.is_empty();
-    let mut valid = Vec::new();
-    for library in libraries {
-        let path = library
-            .join("steamapps")
-            .join("common")
-            .join("Call of Duty Modern Warfare 2");
-        let candidate = if !path.is_dir() {
-            SteamCandidate::Missing
-        } else if has_mw2(std::slice::from_ref(&path)) {
-            valid.push(probe.tried.len());
-            SteamCandidate::Linked
-        } else {
-            SteamCandidate::NoMultiplayerData
-        };
-        probe.tried.push((path, candidate));
-    }
-    match valid[..] {
-        [index] => {
-            let (target, candidate) = &mut probe.tried[index];
-            match create_shortcut(&link, target) {
-                Ok(()) => diag::info!(
-                    Zone,
-                    "linked Steam MW2 {} as {}",
-                    target.display(),
-                    link.display()
-                ),
-                Err(error) => *candidate = SteamCandidate::ShortcutFailed(error),
-            }
+    for (game, shortcut, folder) in missing {
+        let link = root.0.join(shortcut);
+        let mut valid = Vec::new();
+        for library in &libraries {
+            let path = library.join("steamapps").join("common").join(folder);
+            let candidate = if !path.is_dir() {
+                SteamCandidate::Missing
+            } else if has_game(std::slice::from_ref(&path), game) {
+                valid.push(probe.tried.len());
+                SteamCandidate::Linked
+            } else {
+                SteamCandidate::NoMultiplayerData
+            };
+            probe.tried.push((game, path, candidate));
         }
-        [] => {}
-        _ => {
-            for index in valid {
-                probe.tried[index].1 = SteamCandidate::OneOfSeveral;
+        match valid[..] {
+            [index] => {
+                let (_, target, candidate) = &mut probe.tried[index];
+                match create_shortcut(&link, target) {
+                    Ok(()) => diag::info!(
+                        Zone,
+                        "linked Steam {} as {}",
+                        target.display(),
+                        link.display()
+                    ),
+                    Err(error) => {
+                        diag::warn!(Zone, "{error}");
+                        *candidate = SteamCandidate::ShortcutFailed(error);
+                    }
+                }
+            }
+            [] => {}
+            _ => {
+                diag::warn!(
+                    Zone,
+                    "several Steam installs of {folder}; create {shortcut} to select one"
+                );
+                for index in valid {
+                    probe.tried[index].2 = SteamCandidate::OneOfSeveral;
+                }
             }
         }
     }
@@ -74,19 +95,20 @@ pub fn link_steam_mw2(root: &GamesRoot) -> SteamProbe {
 }
 
 #[cfg(not(windows))]
-pub fn link_steam_mw2(_root: &GamesRoot) -> SteamProbe {
+pub fn link_steam_games(_root: &GamesRoot) -> SteamProbe {
     SteamProbe::default()
 }
 
 #[cfg(windows)]
-fn has_mw2(roots: &[PathBuf]) -> bool {
+fn has_game(roots: &[PathBuf], game: ZoneGame) -> bool {
     roots.iter().any(|root| {
         std::iter::once(root.clone())
             .chain(subdirs(root))
-            .flat_map(|tree| subdirs(&tree.join("zone")))
-            .any(|language| {
-                peek_zone_version(&language.join("common_mp.ff")) == Some(IW4_ZONE_VERSION)
+            .flat_map(|tree| {
+                let zone = tree.join("zone");
+                std::iter::once(zone.clone()).chain(subdirs(&zone))
             })
+            .any(|language| zone_game_for_path(&language.join("common_mp.ff")) == Some(game))
     })
 }
 

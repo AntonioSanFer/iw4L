@@ -19,12 +19,13 @@ IW4L/
 `iw4l.exe licenses` prints the licence and notice texts compiled into the executable.
 
 The runtime reads the installations those shortcuts point to. MW2 multiplayer data
-is required for the menu; BO1 and MW3 are optional. Without `Modern Warfare 2.lnk`
-and without MW2 in the folder or its shortcuts, `iw4l.exe` looks in the Steam
-libraries and, when exactly one has MW2 multiplayer data, creates
-`Modern Warfare 2.lnk` to it. Otherwise it shows the folders it tried and how to
-add the shortcut by hand: right-click inside the folder, New > Shortcut, paste the
-MW2 folder path.
+is required for the menu; BO1 and MW3 are optional. For each missing title,
+`iw4l.exe` checks the Steam libraries and creates its shortcut when exactly one
+install has supported multiplayer data. Existing shortcuts and titles already
+found in the configured folders are preserved. If several installs qualify,
+create a shortcut to the one you want. If MW2 is still missing, the launcher shows
+the folders it tried and how to add the shortcut: right-click inside the launcher
+folder, New > Shortcut, paste the game folder path.
 
 Launch `iw4l.exe`. Before starting the game or contacting QUIC, it checks its
 community's HTTPS manifest. An unchanged executable starts normally. An update
@@ -46,5 +47,5 @@ One adjacent `.iw4l-server` is selected automatically; with several, set
 `IW4L_COMMUNITY` to the chosen file path before launching. See [`MASTER.md`](MASTER.md).
 
 On Windows the executable directory is the working directory. Game discovery
-uses `IW4L_GAMES` or shortcuts beside `iw4l.exe`, then Steam for MW2; local `.env` settings remain
+uses `IW4L_GAMES` or shortcuts beside `iw4l.exe`, then Steam for MW2, BO1 and MW3; local `.env` settings remain
 available for game configuration. Publishing: [`DEPLOY.md`](DEPLOY.md).
