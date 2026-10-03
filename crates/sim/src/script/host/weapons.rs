@@ -335,11 +335,12 @@ fn adopt_fired(world: &mut World) {
         // reported as, and a model showing the thrown weapon itself.
         let model = format!("{}{}", crate::WEAPON_MODEL_PREFIX, projectile.weapon);
         let native = weapon_name(world, projectile.weapon);
-        let mut runtime = world.resource_mut::<Runtime>();
-        runtime.set_object_field(object, "nativename", native);
-        runtime.set_object_field(object, "weaponname", name.clone());
-        runtime.set_object_field(object, "weaponmodel", Value::string(&model));
-        drop(runtime);
+        {
+            let mut runtime = world.resource_mut::<Runtime>();
+            runtime.set_object_field(object, "nativename", native);
+            runtime.set_object_field(object, "weaponname", name.clone());
+            runtime.set_object_field(object, "weaponmodel", Value::string(&model));
+        }
         raise(world, player, notify, vec![Value::Object(object), name]);
     }
 }

@@ -35,11 +35,20 @@ pub const TEXTURE_TABLE_BINDING_SAMPLERS: u32 = 3;
 pub enum WgslError {
     Container(String),
     Decode(String),
-    WrongStage { expected: ProgramKind, found: ProgramKind },
+    WrongStage {
+        expected: ProgramKind,
+        found: ProgramKind,
+    },
     UnsupportedOpcode(String),
     UnsupportedOperand(String),
-    UnassignedConstant { buffer: u32, row: u32 },
-    UnassignedTexture { texture: u32, sampler: u32 },
+    UnassignedConstant {
+        buffer: u32,
+        row: u32,
+    },
+    UnassignedTexture {
+        texture: u32,
+        sampler: u32,
+    },
     UndeclaredResource(u32),
     MissingPosition,
     UnsupportedPixelOutput(u32),
@@ -159,13 +168,13 @@ impl Shader {
             .map(Reflection::parse)
             .transpose()
             .map_err(|e| WgslError::Container(e.to_string()))?
-            .unwrap_or_default();
+            .unwrap_or_else(Reflection::default);
         let signature = |fourcc: &[u8; 4]| {
             chunk(fourcc)
                 .map(|data| Signature::parse(data, 24))
                 .transpose()
                 .map_err(|e| WgslError::Container(e.to_string()))
-                .map(Option::unwrap_or_default)
+                .map(|signature| signature.unwrap_or_else(Signature::default))
         };
         let input = signature(b"ISGN")?;
         let output = signature(b"OSGN")?;
@@ -219,7 +228,11 @@ impl Shader {
     /// Every constant-buffer row the stage reads.
     pub fn constant_rows(&self) -> Result<BTreeSet<ConstantRow>, WgslError> {
         let mut rows = BTreeSet::new();
-        for instruction in self.instructions.iter().filter(|i| !is_declaration(i.opcode.0)) {
+        for instruction in self
+            .instructions
+            .iter()
+            .filter(|i| !is_declaration(i.opcode.0))
+        {
             for operand in &instruction.operands {
                 collect_rows(operand, &mut rows)?;
             }
@@ -441,14 +454,20 @@ impl Lowering<'_> {
     }
 
     fn instruction(&mut self, i: &DecodedInstruction) -> Result<(), WgslError> {
-        let op = |n: usize| i.operands.get(n).ok_or_else(|| WgslError::Decode(i.to_string()));
+        let op = |n: usize| {
+            i.operands
+                .get(n)
+                .ok_or_else(|| WgslError::Decode(i.to_string()))
+        };
         let sat = i.saturate();
         let float2 = |this: &Self, f: &dyn Fn(&str, &str) -> String| -> Result<String, WgslError> {
-            Ok(f(&this.source(op(1)?, Kind::Float)?, &this.source(op(2)?, Kind::Float)?))
+            Ok(f(
+                &this.source(op(1)?, Kind::Float)?,
+                &this.source(op(2)?, Kind::Float)?,
+            ))
         };
-        let mask_of = |cond: String| {
-            format!("select(vec4<u32>(0u), vec4<u32>(0xffffffffu), {cond})")
-        };
+        let mask_of =
+            |cond: String| format!("select(vec4<u32>(0u), vec4<u32>(0xffffffffu), {cond})");
         match i.opcode.0 {
             _ if is_declaration(i.opcode.0) => {}
             // add, mul, div, min, max, mad
@@ -482,7 +501,7 @@ impl Lowering<'_> {
                 self.store(op(0)?, &v, Kind::Float, sat)?;
             }
             // dp2, dp3, dp4
-            0x0f | 0x10 | 0x11 => {
+            0x0f..=0x11 => {
                 let n = match i.opcode.0 {
                     0x0f => "xy",
                     0x10 => "xyz",
@@ -505,11 +524,12 @@ impl Lowering<'_> {
             // movc
             0x37 => {
                 let cond = self.bits(op(1)?)?;
-                let floaty = sat || [2, 3].iter().any(|&n| {
-                    i.operands
-                        .get(n)
-                        .is_some_and(|o| o.modifier != Default::default())
-                });
+                let floaty = sat
+                    || [2, 3].iter().any(|&n| {
+                        i.operands
+                            .get(n)
+                            .is_some_and(|o| o.modifier != Default::default())
+                    });
                 let kind = if floaty { Kind::Float } else { Kind::Uint };
                 let a = self.source(op(2)?, kind)?;
                 let b = self.source(op(3)?, kind)?;
@@ -528,8 +548,19 @@ impl Lowering<'_> {
                 self.store(op(0)?, &v, Kind::Uint, false)?;
             }
             // Float unary functions.
-            0x19 | 0x1a | 0x2f | 0x44 | 0x4b | 0x40 | 0x41 | 0x42 | 0x43 | 0x81 | 0x0b
-            | 0x0c | 0x7a..=0x7d => {
+            0x19
+            | 0x1a
+            | 0x2f
+            | 0x44
+            | 0x4b
+            | 0x40
+            | 0x41
+            | 0x42
+            | 0x43
+            | 0x81
+            | 0x0b
+            | 0x0c
+            | 0x7a..=0x7d => {
                 let a = self.source(op(1)?, Kind::Float)?;
                 let v = match i.opcode.0 {
                     0x19 => format!("exp2({a})"),
@@ -649,12 +680,18 @@ impl Lowering<'_> {
                 self.indent += 1;
             }
             0x12 => {
-                self.indent = self.indent.checked_sub(1).ok_or(WgslError::UnbalancedControlFlow)?;
+                self.indent = self
+                    .indent
+                    .checked_sub(1)
+                    .ok_or(WgslError::UnbalancedControlFlow)?;
                 self.line("} else {");
                 self.indent += 1;
             }
             0x15 | 0x16 => {
-                self.indent = self.indent.checked_sub(1).ok_or(WgslError::UnbalancedControlFlow)?;
+                self.indent = self
+                    .indent
+                    .checked_sub(1)
+                    .ok_or(WgslError::UnbalancedControlFlow)?;
                 self.line("}");
             }
             0x30 => {
@@ -690,14 +727,15 @@ impl Lowering<'_> {
 
     fn condition(&self, operand: &Operand, nonzero: bool) -> Result<String, WgslError> {
         let bits = self.bits(operand)?;
-        Ok(format!(
-            "{bits}.x {} 0u",
-            if nonzero { "!=" } else { "==" }
-        ))
+        Ok(format!("{bits}.x {} 0u", if nonzero { "!=" } else { "==" }))
     }
 
     fn sample(&mut self, i: &DecodedInstruction) -> Result<(), WgslError> {
-        let op = |n: usize| i.operands.get(n).ok_or_else(|| WgslError::Decode(i.to_string()));
+        let op = |n: usize| {
+            i.operands
+                .get(n)
+                .ok_or_else(|| WgslError::Decode(i.to_string()))
+        };
         let resource = op(2)?;
         let t = reg(resource)?;
         let s = reg(op(3)?)?;
@@ -724,7 +762,11 @@ impl Lowering<'_> {
             ),
             0x4a => format!("textureSampleLevel({texture}, {sampler}, {coord}, 0.0)"),
             0x49 => {
-                let n = if dimension == TextureDimension::D2 { "xy" } else { "xyz" };
+                let n = if dimension == TextureDimension::D2 {
+                    "xy"
+                } else {
+                    "xyz"
+                };
                 format!(
                     "textureSampleGrad({texture}, {sampler}, {coord}, {}.{n}, {}.{n})",
                     self.source(op(4)?, Kind::Float)?,
@@ -770,7 +812,7 @@ fn output_registers(shader: &Shader) -> BTreeSet<u32> {
     shader
         .instructions
         .iter()
-        .filter(|i| matches!(i.opcode.0, 0x65 | 0x66 | 0x67))
+        .filter(|i| matches!(i.opcode.0, 0x65..=0x67))
         .filter_map(|i| i.operands.first()?.register_number())
         .collect()
 }
@@ -786,9 +828,24 @@ fn input_registers(shader: &Shader) -> BTreeSet<u32> {
 
 fn texture_tables(out: &mut String, textures: &[TextureSlot]) {
     for (dimension, binding, array, ty) in [
-        (TextureDimension::D2, TEXTURE_TABLE_BINDING_2D, "dx_textures_2d", "texture_2d<f32>"),
-        (TextureDimension::Cube, TEXTURE_TABLE_BINDING_CUBE, "dx_textures_cube", "texture_cube<f32>"),
-        (TextureDimension::D3, TEXTURE_TABLE_BINDING_3D, "dx_textures_3d", "texture_3d<f32>"),
+        (
+            TextureDimension::D2,
+            TEXTURE_TABLE_BINDING_2D,
+            "dx_textures_2d",
+            "texture_2d<f32>",
+        ),
+        (
+            TextureDimension::Cube,
+            TEXTURE_TABLE_BINDING_CUBE,
+            "dx_textures_cube",
+            "texture_cube<f32>",
+        ),
+        (
+            TextureDimension::D3,
+            TEXTURE_TABLE_BINDING_3D,
+            "dx_textures_3d",
+            "texture_3d<f32>",
+        ),
     ] {
         if textures.iter().any(|slot| slot.dimension == dimension) {
             writeln!(
@@ -816,8 +873,11 @@ fn stage_body(
         Stage::Vertex => (&abi.vertex_constants, 0),
         Stage::Pixel => (&abi.pixel_constants, abi.vertex_constants.len()),
     };
-    let constants: BTreeMap<ConstantRow, usize> =
-        rows.iter().enumerate().map(|(i, row)| (*row, row_base + i)).collect();
+    let constants: BTreeMap<ConstantRow, usize> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, row)| (*row, row_base + i))
+        .collect();
     let mut lowering = Lowering {
         stage,
         out: String::new(),
@@ -830,10 +890,13 @@ fn stage_body(
     };
     lowering.out.push_str(prologue);
     for row in shader.constant_rows()? {
-        let arena = *lowering.constants.get(&row).ok_or(WgslError::UnassignedConstant {
-            buffer: row.buffer,
-            row: row.row,
-        })?;
+        let arena = *lowering
+            .constants
+            .get(&row)
+            .ok_or(WgslError::UnassignedConstant {
+                buffer: row.buffer,
+                row: row.row,
+            })?;
         lowering.line(&format!(
             "let cb{}_{} = bitcast<vec4<u32>>(sm3_constants.c[sm3_constant_base + {arena}u]);",
             row.buffer, row.row
@@ -918,7 +981,11 @@ pub fn lower_pass(abi: &PassAbi, vertex: &Shader, pixel: &Shader) -> Result<Stri
     }
     out.push_str("\nstruct DxVaryings {\n    @builtin(position) @invariant position: vec4<f32>,\n");
     for location in locations.values() {
-        writeln!(out, "    @location({location}) varying_{location}: vec4<f32>,").unwrap();
+        writeln!(
+            out,
+            "    @location({location}) varying_{location}: vec4<f32>,"
+        )
+        .unwrap();
     }
     writeln!(
         out,
@@ -943,15 +1010,28 @@ pub fn lower_pass(abi: &PassAbi, vertex: &Shader, pixel: &Shader) -> Result<Stri
             .vertex_inputs
             .iter()
             .find(|input| input.register == register)
-            .map_or_else(|| "vec4<f32>(0.0)".to_string(), |input| input.expression.clone());
-        writeln!(prologue, "    let v{register} = bitcast<vec4<u32>>({expression});").unwrap();
+            .map_or_else(
+                || "vec4<f32>(0.0)".to_string(),
+                |input| input.expression.clone(),
+            );
+        writeln!(
+            prologue,
+            "    let v{register} = bitcast<vec4<u32>>({expression});"
+        )
+        .unwrap();
     }
     let mut epilogue = format!("return DxVaryings(bitcast<vec4<f32>>(o{position})");
     for register in locations.keys() {
         write!(epilogue, ", bitcast<vec4<f32>>(o{register})").unwrap();
     }
     epilogue.push_str(", sm3_constant_base);");
-    out.push_str(&stage_body(vertex, Stage::Vertex, abi, epilogue, &prologue)?);
+    out.push_str(&stage_body(
+        vertex,
+        Stage::Vertex,
+        abi,
+        epilogue,
+        &prologue,
+    )?);
     out.push_str("}\n\n");
 
     // Pixel stage: inputs linked to the vertex outputs by semantic.
@@ -979,7 +1059,11 @@ pub fn lower_pass(abi: &PassAbi, vertex: &Shader, pixel: &Shader) -> Result<Stri
                 ),
             None => "vec4<f32>(0.0)".to_string(),
         };
-        writeln!(prologue, "    let v{register} = bitcast<vec4<u32>>({expression});").unwrap();
+        writeln!(
+            prologue,
+            "    let v{register} = bitcast<vec4<u32>>({expression});"
+        )
+        .unwrap();
     }
     let colour = if pixel_outputs.contains(&0) {
         "bitcast<vec4<f32>>(o0)"

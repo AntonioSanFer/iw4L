@@ -880,14 +880,9 @@ fn t6_class_tables(
         .assets
         .iter()
         .filter_map(|asset| asset_game::capture_t6_string_table(&load, asset))
-        .filter_map(|table| {
-            if asset_game::is_stats_table_name(&table.name) {
-                Some(table)
-            } else if table.name.eq_ignore_ascii_case("mp/attachmentTable.csv") {
-                Some(table)
-            } else {
-                None
-            }
+        .filter(|table| {
+            asset_game::is_stats_table_name(&table.name)
+                || table.name.eq_ignore_ascii_case("mp/attachmentTable.csv")
         })
         .collect();
     report.push(format!(

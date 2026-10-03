@@ -20,10 +20,8 @@ pub use catalog::{
     RuntimeTechnique, RuntimeTechniqueSet, RuntimeTechniqueSetId, RuntimeTextureBinding,
     SortedMaterialOrdinal, TECHNIQUE_SLOT_COUNT, sort_band, sort_pass_args,
 };
-pub use dxbc_abi::{
-    build_dxbc_pass_abi, dxbc_constant_rows, dxbc_texture_slots, is_dxbc_program,
-};
 pub use code_sources::{CodeSourceError, CodeSourceLookup, LayeredCodeSources, RuntimeCodeSources};
+pub use dxbc_abi::{build_dxbc_pass_abi, dxbc_constant_rows, dxbc_texture_slots, is_dxbc_program};
 pub use execute::{
     ExecutablePass, ExecutablePassView, MaterialDrawKey, MaterialExecution, MaterialRefusal,
     PackedCodeConstantLane, PackedCodeConstants, PackedCodeSamplerLane, PackedCodeSamplers,

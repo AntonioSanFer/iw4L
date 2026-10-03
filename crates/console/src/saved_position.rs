@@ -35,6 +35,7 @@ pub(crate) fn register_saved_position_commands(registry: &mut ConsoleRegistry) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn route_saved_position_commands(
     mut events: MessageReader<ConsoleCommand>,
     mut lives: MessageReader<frame::LifeStarted>,
@@ -55,39 +56,38 @@ pub(crate) fn route_saved_position_commands(
         line.0 = msg.clone();
         console.echo(msg, capacity);
     };
-    let mut load = |command: &str,
-                    saved: Option<([f32; 3], [f32; 3])>,
-                    echo: &mut dyn FnMut(String)| {
-        let Some((origin, angles)) = saved else {
-            echo(format!("{command}: nothing saved — use save first"));
-            return;
+    let mut load =
+        |command: &str, saved: Option<([f32; 3], [f32; 3])>, echo: &mut dyn FnMut(String)| {
+            let Some((origin, angles)) = saved else {
+                echo(format!("{command}: nothing saved — use save first"));
+                return;
+            };
+            if authority.as_ref().is_some_and(|a| !a.0.cheats_enabled()) {
+                echo(format!("{command}: cheats are off"));
+                return;
+            }
+            let Some(inbox) = inbox.as_deref_mut() else {
+                echo(format!("{command}: no action inbox (not a listen host)"));
+                return;
+            };
+            let request_id = seq.allocate();
+            if let Err(error) = inbox.push(
+                local.0,
+                ClientAction::Move {
+                    request_id,
+                    origin,
+                    angles,
+                },
+            ) {
+                echo(format!("{command}: {error}"));
+                return;
+            }
+            look.angles = look_angles_from_degrees(angles);
+            echo(format!(
+                "{command}: moved to {:.1} {:.1} {:.1} yaw={:.0} pitch={:.0}",
+                origin[0], origin[1], origin[2], angles[1], angles[0]
+            ));
         };
-        if authority.as_ref().is_some_and(|a| !a.0.cheats_enabled()) {
-            echo(format!("{command}: cheats are off"));
-            return;
-        }
-        let Some(inbox) = inbox.as_deref_mut() else {
-            echo(format!("{command}: no action inbox (not a listen host)"));
-            return;
-        };
-        let request_id = seq.allocate();
-        if let Err(error) = inbox.push(
-            local.0,
-            ClientAction::Move {
-                request_id,
-                origin,
-                angles,
-            },
-        ) {
-            echo(format!("{command}: {error}"));
-            return;
-        }
-        look.angles = look_angles_from_degrees(angles);
-        echo(format!(
-            "{command}: moved to {:.1} {:.1} {:.1} yaw={:.0} pitch={:.0}",
-            origin[0], origin[1], origin[2], angles[1], angles[0]
-        ));
-    };
 
     for cmd in events.read() {
         match cmd.name.as_str() {

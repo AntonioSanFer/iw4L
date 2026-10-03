@@ -92,7 +92,9 @@ pub fn set_game_folders(folders: Vec<PathBuf>) {
         .into_iter()
         .filter(|folder| folder.join("zone").is_dir())
         .collect();
-    *GAME_FOLDERS.write().unwrap_or_else(std::sync::PoisonError::into_inner) = folders;
+    *GAME_FOLDERS
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = folders;
 }
 
 /// The install folder a picked folder belongs to: the folder itself, or the

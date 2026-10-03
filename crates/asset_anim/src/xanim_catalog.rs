@@ -532,19 +532,22 @@ impl XAnimBuild {
         let bytes = |o: usize, len: usize| -> Vec<u8> {
             ptr(o)
                 .and_then(|p| load.blocks.bytes(p, len).ok())
-                .map(<[u8]>::to_vec)
-                .unwrap_or_default()
+                .map_or_else(Vec::new, <[u8]>::to_vec)
         };
         let words = |o: usize, count: usize| -> Vec<u16> {
             bytes(o, 2 * count)
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| u16::from_le_bytes(*c))
                 .collect()
         };
         let dwords = |o: usize, count: usize| -> Vec<u32> {
             bytes(o, 4 * count)
-                .chunks_exact(4)
-                .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| u32::from_le_bytes(*c))
                 .collect()
         };
         let Some(name) = ptr(0)
@@ -563,7 +566,9 @@ impl XAnimBuild {
             .map(|id| load.script_string(id).unwrap_or("").to_owned())
             .collect();
         let notifies = bytes(96, 8 * usize::from(h[34]))
-            .chunks_exact(8)
+            .as_chunks::<8>()
+            .0
+            .iter()
             .map(|c| ClipNotify {
                 name: load
                     .script_string(u16::from_le_bytes([c[0], c[1]]))

@@ -232,7 +232,9 @@ impl FpvAssembly {
                     (FpvHideMode::Bones, Some(words)) => {
                         collapsed_bones.extend(
                             (0..slot.bone_count)
-                                .filter(|&bone| words[bone >> 5] & (0x8000_0000u32 >> (bone & 31)) != 0)
+                                .filter(|&bone| {
+                                    words[bone >> 5] & (0x8000_0000u32 >> (bone & 31)) != 0
+                                })
                                 .map(|bone| slot.base + bone),
                         );
                         None

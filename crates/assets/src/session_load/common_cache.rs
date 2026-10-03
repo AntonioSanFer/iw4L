@@ -643,7 +643,9 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
     let t6_hands = t6_content
         .as_ref()
         .and_then(|content| content.hands.clone());
-    let t6_melee = t6_content.as_ref().and_then(|content| content.melee.clone());
+    let t6_melee = t6_content
+        .as_ref()
+        .and_then(|content| content.melee.clone());
     // T6 clips carry a prefix IW4 names do not; one that still meets a taken
     // name is left out, and its slot stays empty rather than play IW4's.
     let mut t6_anim_names = std::collections::BTreeSet::new();
@@ -683,9 +685,11 @@ async fn prepare_common(key: CommonKey) -> Arc<CommonSet> {
         },
         |name| t6_sound_names.contains(name),
         |name| t6_anim_names.contains(name),
-        t6_hands
-            .as_deref()
-            .filter(|name| fpv_meshes.get(asset_core::AssetNamespace::Iw4, name).is_some()),
+        t6_hands.as_deref().filter(|name| {
+            fpv_meshes
+                .get(asset_core::AssetNamespace::Iw4, name)
+                .is_some()
+        }),
         t6_melee.as_ref(),
     );
     // Thrown and planted T6 models were bound as world guns; the missile

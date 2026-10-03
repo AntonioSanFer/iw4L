@@ -569,7 +569,11 @@ impl WeaponFamilies {
         out
     }
 
-    pub(crate) fn configuration_name(&self, family: &WeaponFamily, attachments: &[String]) -> String {
+    pub(crate) fn configuration_name(
+        &self,
+        family: &WeaponFamily,
+        attachments: &[String],
+    ) -> String {
         if attachments.is_empty() {
             return family.key.base.clone();
         }
@@ -623,7 +627,10 @@ impl WeaponFamilies {
 
     /// Every loaded family of `namespace` bare, with each attachment it
     /// offers, and with each compatible pair of them.
-    pub(crate) fn candidate_selections(&self, namespace: AssetNamespace) -> Vec<(u32, WeaponSelection)> {
+    pub(crate) fn candidate_selections(
+        &self,
+        namespace: AssetNamespace,
+    ) -> Vec<(u32, WeaponSelection)> {
         let mut families: Vec<&WeaponFamily> = self
             .families
             .iter()

@@ -14,9 +14,17 @@ use crate::program::{Instruction, OpcodeName};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IrError {
-    Truncated { opcode: OpcodeName },
-    UnsupportedIndex { opcode: OpcodeName, representation: u32 },
-    Trailing { opcode: OpcodeName, words: usize },
+    Truncated {
+        opcode: OpcodeName,
+    },
+    UnsupportedIndex {
+        opcode: OpcodeName,
+        representation: u32,
+    },
+    Trailing {
+        opcode: OpcodeName,
+        words: usize,
+    },
 }
 
 impl fmt::Display for IrError {
@@ -364,7 +372,17 @@ impl fmt::Display for Operand {
         } else {
             f.write_str(self.register.prefix())?;
             for (i, index) in self.indices.iter().enumerate() {
-                let open = if i == 0 && !matches!(self.register, RegisterType::IndexableTemp | RegisterType::ConstantBuffer | RegisterType::ImmediateConstantBuffer) { "" } else { "[" };
+                let open = if i == 0
+                    && !matches!(
+                        self.register,
+                        RegisterType::IndexableTemp
+                            | RegisterType::ConstantBuffer
+                            | RegisterType::ImmediateConstantBuffer
+                    ) {
+                    ""
+                } else {
+                    "["
+                };
                 let close = if open.is_empty() { "" } else { "]" };
                 match index {
                     Index::Immediate(n) => write!(f, "{open}{n}{close}")?,

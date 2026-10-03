@@ -1583,8 +1583,13 @@ fn decode_iwi_mips_with(bytes: &[u8], keep_bc5: bool) -> Result<DecodedMips, Str
     };
 
     let single = || -> Result<DecodedMips, String> {
-        let (w, h, pixels) =
-            load_mip_level_with(payload, header.width, header.height, header.format, keep_bc5)?;
+        let (w, h, pixels) = load_mip_level_with(
+            payload,
+            header.width,
+            header.height,
+            header.format,
+            keep_bc5,
+        )?;
         Ok(match storage {
             MipStorage::Rgba8 => DecodedMips::single(w, h, pixels),
             other => DecodedMips::single_compressed(w, h, other, pixels),
@@ -1619,7 +1624,13 @@ fn decode_iwi_mips_with(bytes: &[u8], keep_bc5: bool) -> Result<DecodedMips, Str
 
     let mut levels = Vec::with_capacity(ranges.len());
     for (level_start, level_end, w, h) in ranges {
-        match load_mip_level_with(&bytes[level_start..level_end], w, h, header.format, keep_bc5) {
+        match load_mip_level_with(
+            &bytes[level_start..level_end],
+            w,
+            h,
+            header.format,
+            keep_bc5,
+        ) {
             Ok((_, _, pixels)) => levels.push(pixels),
             Err(_) => return single(),
         }
@@ -1904,7 +1915,10 @@ pub fn decode_iwi_texture_t6_folded(
                     // A BC3 colour block is four-colour whatever its endpoint order.
                     bcdec_rs::bc3(block, &mut tile, 16);
                 }
-                let (bx, by) = (index % blocks_wide * 4, (first_row + index / blocks_wide) * 4);
+                let (bx, by) = (
+                    index % blocks_wide * 4,
+                    (first_row + index / blocks_wide) * 4,
+                );
                 let texels: [[f32; 3]; 16] = core::array::from_fn(|i| {
                     let (x, y) = ((bx + i % 4).min(w - 1), (by + i / 4).min(h - 1));
                     let add = spec[(y * sh / h) * sw + x * sw / w];
@@ -1917,7 +1931,10 @@ pub fn decode_iwi_texture_t6_folded(
         };
         let row_bytes = blocks_wide * block_bytes;
         let rows = data.len() / row_bytes;
-        let threads = std::thread::available_parallelism().map_or(1, usize::from).min(rows / 16).max(1);
+        let threads = std::thread::available_parallelism()
+            .map_or(1, usize::from)
+            .min(rows / 16)
+            .max(1);
         if threads == 1 {
             fold_rows(0, data);
         } else {
@@ -1937,11 +1954,16 @@ pub fn decode_iwi_texture_t6_folded(
 
 /// `specular × (1 − gloss)` in linear light, box-filtered down to 1×1, the
 /// largest level first.
-fn specular_pyramid(specular: &[u8]) -> Result<Vec<(usize, usize, Vec<[f32; 3]>)>, String> {
+/// One level of a [`specular_pyramid`]: width, height and linear texels.
+type PyramidLevel = (usize, usize, Vec<[f32; 3]>);
+
+fn specular_pyramid(specular: &[u8]) -> Result<Vec<PyramidLevel>, String> {
     let (w, h, rgba) = decode_iwi_rgba(specular)?;
     let (mut w, mut h) = (w as usize, h as usize);
     let top: Vec<[f32; 3]> = rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|p| {
             let rough = 1.0 - f32::from(p[3]) / 255.0;
             core::array::from_fn(|c| srgb_byte_to_linear(p[c]) * rough)
@@ -1954,8 +1976,12 @@ fn specular_pyramid(specular: &[u8]) -> Result<Vec<(usize, usize, Vec<[f32; 3]>)
         let next = (0..nw * nh)
             .map(|i| {
                 let (x, y) = (i % nw, i / nw);
-                let at = |dx: usize, dy: usize| prev[(2 * y + dy).min(h - 1) * w + (2 * x + dx).min(w - 1)];
-                core::array::from_fn(|c| (at(0, 0)[c] + at(1, 0)[c] + at(0, 1)[c] + at(1, 1)[c]) / 4.0)
+                let at = |dx: usize, dy: usize| {
+                    prev[(2 * y + dy).min(h - 1) * w + (2 * x + dx).min(w - 1)]
+                };
+                core::array::from_fn(|c| {
+                    (at(0, 0)[c] + at(1, 0)[c] + at(0, 1)[c] + at(1, 1)[c]) / 4.0
+                })
             })
             .collect();
         levels.push((nw, nh, next));
@@ -2003,8 +2029,7 @@ fn linear_to_srgb_byte(c: f32) -> f32 {
 /// endpoints at the extremes along the colours' principal axis, each texel
 /// the nearest of the four palette entries.
 fn encode_bc1_colour(texels: &[[f32; 3]; 16]) -> [u8; 8] {
-    let mean: [f32; 3] =
-        core::array::from_fn(|c| texels.iter().map(|t| t[c]).sum::<f32>() / 16.0);
+    let mean: [f32; 3] = core::array::from_fn(|c| texels.iter().map(|t| t[c]).sum::<f32>() / 16.0);
     let mut cov = [[0f32; 3]; 3];
     for t in texels {
         let d: [f32; 3] = core::array::from_fn(|c| t[c] - mean[c]);
@@ -2016,8 +2041,7 @@ fn encode_bc1_colour(texels: &[[f32; 3]; 16]) -> [u8; 8] {
     }
     let mut axis = [1f32, 1.0, 1.0];
     for _ in 0..8 {
-        let next: [f32; 3] =
-            core::array::from_fn(|a| (0..3).map(|b| cov[a][b] * axis[b]).sum());
+        let next: [f32; 3] = core::array::from_fn(|a| (0..3).map(|b| cov[a][b] * axis[b]).sum());
         let len = next.iter().map(|v| v * v).sum::<f32>().sqrt();
         if len < 1e-6 {
             break;
@@ -2103,13 +2127,13 @@ pub fn with_opaque_alpha(image: &Image) -> Image {
     };
     match format {
         TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => {
-            for block in data.chunks_exact_mut(16) {
+            for block in data.as_chunks_mut::<16>().0 {
                 block[..8].fill(0xff);
             }
         }
         TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => {
             // Both endpoints 255 and every index 0.
-            for block in data.chunks_exact_mut(16) {
+            for block in data.as_chunks_mut::<16>().0 {
                 block[..2].fill(0xff);
                 block[2..8].fill(0);
             }
@@ -2118,7 +2142,7 @@ pub fn with_opaque_alpha(image: &Image) -> Image {
         | TextureFormat::Rgba8UnormSrgb
         | TextureFormat::Bgra8Unorm
         | TextureFormat::Bgra8UnormSrgb => {
-            for texel in data.chunks_exact_mut(4) {
+            for texel in data.as_chunks_mut::<4>().0 {
                 texel[3] = 0xff;
             }
         }

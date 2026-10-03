@@ -2349,7 +2349,8 @@ impl FxCatalog {
         let view = FxEffectDefView {
             flags: i16_at(T6_FX_EFFECT_DEF_FLAGS_OFF) & 0xffff,
             msec_looping_life: i32::from_le_bytes(
-                h[T6_FX_EFFECT_DEF_MSEC_LOOPING_LIFE_OFF..T6_FX_EFFECT_DEF_MSEC_LOOPING_LIFE_OFF + 4]
+                h[T6_FX_EFFECT_DEF_MSEC_LOOPING_LIFE_OFF
+                    ..T6_FX_EFFECT_DEF_MSEC_LOOPING_LIFE_OFF + 4]
                     .try_into()
                     .expect("header extent"),
             ),
@@ -2405,29 +2406,37 @@ fn capture_elem_t6(
         slot: true,
         alias: false,
     };
-    let visuals = if matches!(t, elem_type::OMNI_LIGHT | elem_type::SPOT_LIGHT)
-        || elem.visuals.is_empty()
-    {
-        vec![OwnedFxVisual::None]
-    } else if fx_elem::is_sprite(t) {
-        elem.visuals
-            .iter()
-            .map(|name| OwnedFxVisual::Material {
-                material: authored.unresolved(),
-                hint: Some(name.clone()).filter(|name| !name.is_empty()),
-                material_namespace: namespace,
-                authored,
-            })
-            .collect()
-    } else if t == elem_type::MODEL {
-        elem.visuals.iter().map(|name| model_visual(Some(name.clone()))).collect()
-    } else if t == elem_type::RUNNER {
-        elem.visuals.iter().map(|name| runner_visual(name.clone())).collect()
-    } else if t == elem_type::SOUND {
-        elem.visuals.iter().map(|name| sound_visual(name.clone())).collect()
-    } else {
-        vec![OwnedFxVisual::None]
-    };
+    let visuals =
+        if matches!(t, elem_type::OMNI_LIGHT | elem_type::SPOT_LIGHT) || elem.visuals.is_empty() {
+            vec![OwnedFxVisual::None]
+        } else if fx_elem::is_sprite(t) {
+            elem.visuals
+                .iter()
+                .map(|name| OwnedFxVisual::Material {
+                    material: authored.unresolved(),
+                    hint: Some(name.clone()).filter(|name| !name.is_empty()),
+                    material_namespace: namespace,
+                    authored,
+                })
+                .collect()
+        } else if t == elem_type::MODEL {
+            elem.visuals
+                .iter()
+                .map(|name| model_visual(Some(name.clone())))
+                .collect()
+        } else if t == elem_type::RUNNER {
+            elem.visuals
+                .iter()
+                .map(|name| runner_visual(name.clone()))
+                .collect()
+        } else if t == elem_type::SOUND {
+            elem.visuals
+                .iter()
+                .map(|name| sound_visual(name.clone()))
+                .collect()
+        } else {
+            vec![OwnedFxVisual::None]
+        };
     let (effect_on_impact, effect_on_impact_hint) =
         capture_named_child(elem.effect_on_impact.clone());
     let (effect_on_death, effect_on_death_hint) = capture_named_child(elem.effect_on_death.clone());

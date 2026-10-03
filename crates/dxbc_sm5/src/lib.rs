@@ -16,7 +16,5 @@ pub use ir::{
     decode_instruction,
 };
 pub use program::{Instruction, OpcodeName, Program, ProgramError, ProgramKind};
-pub use reflection::{
-    Binding, BindingKind, ConstantBuffer, Reflection, ReflectionError, Variable,
-};
+pub use reflection::{Binding, BindingKind, ConstantBuffer, Reflection, ReflectionError, Variable};
 pub use signature::{Signature, SignatureElement, SignatureError};

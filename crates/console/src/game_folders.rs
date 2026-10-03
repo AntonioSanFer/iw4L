@@ -16,7 +16,11 @@ fn settings_key(game: OtherGame) -> String {
 
 /// Parses a `game_folder_*` settings line into `settings`; false for any
 /// other key.
-pub(crate) fn parse_game_folder(key: &str, value: &str, settings: &mut frame::GameSettings) -> bool {
+pub(crate) fn parse_game_folder(
+    key: &str,
+    value: &str,
+    settings: &mut frame::GameSettings,
+) -> bool {
     let Some(game) = OtherGame::ALL
         .into_iter()
         .find(|&game| settings_key(game) == key)

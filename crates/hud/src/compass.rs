@@ -281,16 +281,9 @@ pub(crate) fn update_compass(
             .unwrap_or(0);
         let team =
             gamemode_iw4::Team::from_packed_u8(team as u8).unwrap_or(gamemode_iw4::Team::Free);
-        let objectives = snapshot
-            .meta
-            .objectives
-            .compass
-            .iter()
-            .filter(|o| {
-                o.shows_to(team, local.0.0)
-                    && !o.icon.is_empty()
-                    && (team_mode || o.viewer.is_some())
-            });
+        let objectives = snapshot.meta.objectives.compass.iter().filter(|o| {
+            o.shows_to(team, local.0.0) && !o.icon.is_empty() && (team_mode || o.viewer.is_some())
+        });
         let size = map_item.rect.h * COMPASS_SIZE_DEFAULT;
         for objective in objectives {
             let offset = world_pos_to_compass_partial(

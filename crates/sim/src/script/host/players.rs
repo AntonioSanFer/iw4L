@@ -488,7 +488,10 @@ const INSERTION_PLANT_REACH: f32 = 256.0;
 /// The flare glows IW4's scripts light on a tactical insertion (team, then
 /// enemy colour), and the T6 lights a foreign one shows in their place.
 const INSERTION_LIGHTS: [(&str, &str); 2] = [
-    ("misc/flare_ambient_green", "misc/fx_equip_tac_insert_light_grn"),
+    (
+        "misc/flare_ambient_green",
+        "misc/fx_equip_tac_insert_light_grn",
+    ),
     ("misc/flare_ambient", "misc/fx_equip_tac_insert_light_red"),
 ];
 
@@ -503,7 +506,9 @@ pub(crate) fn insertion_light(
     effect: &str,
     origin: [f32; 3],
 ) -> Option<(&'static str, [f32; 3])> {
-    let (_, light) = INSERTION_LIGHTS.iter().find(|(flare, _)| *flare == effect)?;
+    let (_, light) = INSERTION_LIGHTS
+        .iter()
+        .find(|(flare, _)| *flare == effect)?;
     world
         .resource::<Runtime>()
         .insertion_spots
@@ -544,7 +549,10 @@ pub(crate) fn dress_insertion_glow(world: &mut World, object: u64, model: &str) 
     if model != INSERTION_GLOW_MODEL {
         return;
     }
-    let origin = match world.resource_mut::<Runtime>().object_field(object, "origin") {
+    let origin = match world
+        .resource_mut::<Runtime>()
+        .object_field(object, "origin")
+    {
         Value::Vector(origin) => origin,
         _ => return,
     };
@@ -578,7 +586,8 @@ pub(crate) fn dress_insertion_glow(world: &mut World, object: u64, model: &str) 
             else {
                 return;
             };
-            if runtime.entities.contains_key(&grenade) && !runtime.pending_deletes.contains(&grenade)
+            if runtime.entities.contains_key(&grenade)
+                && !runtime.pending_deletes.contains(&grenade)
             {
                 runtime.pending_deletes.push(grenade);
             }

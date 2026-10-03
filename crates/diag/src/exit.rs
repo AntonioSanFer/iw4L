@@ -24,7 +24,11 @@ pub fn at_exit(hook: fn()) {
 
 /// Runs the registered hooks, each once.
 pub fn run_exit_hooks() {
-    let hooks = std::mem::take(&mut *HOOKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+    let hooks = std::mem::take(
+        &mut *HOOKS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    );
     for hook in hooks.into_iter().rev() {
         let _ = std::panic::catch_unwind(hook);
     }

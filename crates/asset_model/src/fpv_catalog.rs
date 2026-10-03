@@ -680,7 +680,10 @@ pub fn plan_fpv_mounts(
                     .find(|name| name.eq_ignore_ascii_case(tag))
             });
             on_gun_root
-                .then(|| tag.or(gun_skel.bone_names.first()).map(|bone| (1, bone.as_str())))
+                .then(|| {
+                    tag.or(gun_skel.bone_names.first())
+                        .map(|bone| (1, bone.as_str()))
+                })
                 .flatten()
         };
         let joint = if on_gun_root {

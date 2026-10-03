@@ -129,8 +129,9 @@ impl RuntimeProgramPort {
         )
         .map_err(ProgramRegistryError::Abi)?;
         lowering.alpha_tests = super::sm3_wgsl::dxbc_alpha_tests();
-        let source = dxbc_sm5::wgsl::lower_pass(&lowering, &vertex, &pixel)
-            .map_err(|error| ProgramRegistryError::Wgsl(super::sm3_wgsl::Sm3WgslError::WgslParse(error.to_string())))?;
+        let source = dxbc_sm5::wgsl::lower_pass(&lowering, &vertex, &pixel).map_err(|error| {
+            ProgramRegistryError::Wgsl(super::sm3_wgsl::Sm3WgslError::WgslParse(error.to_string()))
+        })?;
         super::sm3_wgsl::validate_wgsl(&source).map_err(ProgramRegistryError::Wgsl)?;
         let module = super::sm3_wgsl::ValidatedPassWgsl {
             source,

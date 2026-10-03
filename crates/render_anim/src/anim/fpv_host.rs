@@ -141,7 +141,16 @@ pub fn generate_fpv_pose(
     let (_pose, notifies) =
         tick_equipped_fpv_with_predicted_fire(equipped, cursor, sample, predicted_fire, dt);
 
-    let kind = pose_equipped_fpv(equipped, rigs, active, rocket, melee, ads, dual, dual_offset);
+    let kind = pose_equipped_fpv(
+        equipped,
+        rigs,
+        active,
+        rocket,
+        melee,
+        ads,
+        dual,
+        dual_offset,
+    );
     (kind, notifies)
 }
 

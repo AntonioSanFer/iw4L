@@ -456,7 +456,8 @@ impl<'z> AttachmentUniqueView<'z> {
     /// The asset a model field named when this was loaded.
     fn model_name(&self, off: u32) -> Option<&'z str> {
         let model = &self.load.assets[self.asset.field(off)?];
-        let p = crate::walk::decode_ptr(u32::from_le_bytes(model.header.get(0..4)?.try_into().ok()?))?;
+        let p =
+            crate::walk::decode_ptr(u32::from_le_bytes(model.header.get(0..4)?.try_into().ok()?))?;
         self.load
             .blocks
             .cstr(p)
@@ -655,7 +656,8 @@ impl<'z> WeaponView<'z> {
     /// (its scope overlay).
     pub fn variant_asset_name(&self, off: u32) -> Option<&'z str> {
         let asset = &self.load.assets[self.asset.field(off)?];
-        let p = crate::walk::decode_ptr(u32::from_le_bytes(asset.header.get(0..4)?.try_into().ok()?))?;
+        let p =
+            crate::walk::decode_ptr(u32::from_le_bytes(asset.header.get(0..4)?.try_into().ok()?))?;
         self.load
             .blocks
             .cstr(p)
@@ -735,7 +737,8 @@ impl<'z> WeaponView<'z> {
     /// loaded (its HUD icon).
     pub fn def_loaded_asset_name(&self, off: u32) -> Option<&'z str> {
         let asset = self.load.asset_in(self.asset, self.def?.at(off))?;
-        let p = crate::walk::decode_ptr(u32::from_le_bytes(asset.header.get(0..4)?.try_into().ok()?))?;
+        let p =
+            crate::walk::decode_ptr(u32::from_le_bytes(asset.header.get(0..4)?.try_into().ok()?))?;
         self.load
             .blocks
             .cstr(p)
@@ -760,15 +763,24 @@ impl<'z> WeaponView<'z> {
     pub fn attached_model(&self, slot: u32, view: bool) -> Option<(&'z str, [f32; 3], [f32; 3])> {
         use variant as v;
         let (models, offsets, rotations) = if view {
-            (v::ATTACH_VIEW_MODEL, v::ATTACH_VIEW_MODEL_OFFSETS, v::ATTACH_VIEW_MODEL_ROTATIONS)
+            (
+                v::ATTACH_VIEW_MODEL,
+                v::ATTACH_VIEW_MODEL_OFFSETS,
+                v::ATTACH_VIEW_MODEL_ROTATIONS,
+            )
         } else {
-            (v::ATTACH_WORLD_MODEL, v::ATTACH_WORLD_MODEL_OFFSETS, v::ATTACH_WORLD_MODEL_ROTATIONS)
+            (
+                v::ATTACH_WORLD_MODEL,
+                v::ATTACH_WORLD_MODEL_OFFSETS,
+                v::ATTACH_WORLD_MODEL_ROTATIONS,
+            )
         };
         if slot >= v::ATTACH_MODEL_COUNT {
             return None;
         }
         let name = asset_name(self.load, self.variant_ptr(models)?.at(4 * slot))?;
-        let vec3 = |base: u32| core::array::from_fn(|k| self.variant_f32(base + 12 * slot + 4 * k as u32));
+        let vec3 =
+            |base: u32| core::array::from_fn(|k| self.variant_f32(base + 12 * slot + 4 * k as u32));
         Some((name, vec3(offsets), vec3(rotations)))
     }
 

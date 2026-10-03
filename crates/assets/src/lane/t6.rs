@@ -86,7 +86,13 @@ fn melee_weapon(load: &fastfile_t6::ZoneLoad) -> Option<asset_game::T6Melee> {
         weapon
             .xanim(slot as u32)
             .filter(|name| !name.is_empty())
-            .map(|name| format!("{}{}", asset_game::T6_XANIM_PREFIX, name.to_ascii_lowercase()))
+            .map(|name| {
+                format!(
+                    "{}{}",
+                    asset_game::T6_XANIM_PREFIX,
+                    name.to_ascii_lowercase()
+                )
+            })
     };
     Some(asset_game::T6Melee {
         knife: asset_game::t6_model_name(weapon.def_asset_array_name(def::GUN_XMODEL, 0)?),
@@ -215,7 +221,11 @@ fn capture_sounds(
         }
     }
     names.extend(content.note_sounds.iter().cloned());
-    names.extend(asset_game::T6_EQUIPMENT_SOUNDS.iter().map(|&name| name.to_owned()));
+    names.extend(
+        asset_game::T6_EQUIPMENT_SOUNDS
+            .iter()
+            .map(|&name| name.to_owned()),
+    );
     let (banks, mut report) = asset_audio::t6_sound_banks(path);
     let foley = foley_zone(path, &mut report);
     let loads: Vec<&fastfile_t6::ZoneLoad> = std::iter::once(load).chain(&foley).collect();
@@ -489,22 +499,23 @@ fn capture_material(
         read(&NORMAL_SAMPLERS),
         read(&SPECULAR_SAMPLERS),
     );
-    let mut decode = |texels: &T6Texels, key: String, decode: &dyn Fn() -> Result<Image, String>| {
-        if let Some(image) = decoded.get(&key) {
-            return Some((texels.name.clone(), image.clone()));
-        }
-        match decode() {
-            Ok(image) => {
-                let image = Arc::new(image);
-                decoded.insert(key, image.clone());
-                Some((texels.name.clone(), image))
+    let mut decode =
+        |texels: &T6Texels, key: String, decode: &dyn Fn() -> Result<Image, String>| {
+            if let Some(image) = decoded.get(&key) {
+                return Some((texels.name.clone(), image.clone()));
             }
-            Err(error) => {
-                report.push(format!("t6 content: {}: {error}", texels.name));
-                None
+            match decode() {
+                Ok(image) => {
+                    let image = Arc::new(image);
+                    decoded.insert(key, image.clone());
+                    Some((texels.name.clone(), image))
+                }
+                Err(error) => {
+                    report.push(format!("t6 content: {}: {error}", texels.name));
+                    None
+                }
             }
-        }
-    };
+        };
     let plain = |t: &T6Texels, is_normal: bool| {
         asset_material::decode_iwi_texture(&t.iwi, t.sampler_state, is_normal, !is_normal)
     };
@@ -553,7 +564,9 @@ fn read_technique_set(
     load: &fastfile_t6::ZoneLoad,
     header: &[u8],
 ) -> Option<asset_material::t6_techset::T6TechniqueSet> {
-    use asset_material::t6_techset::{T6Argument, T6Pass, T6Technique, T6TechniqueSet, argument_type};
+    use asset_material::t6_techset::{
+        T6Argument, T6Pass, T6Technique, T6TechniqueSet, argument_type,
+    };
     let blocks = &load.blocks;
     let u16_le = |b: &[u8], at: usize| u16::from_le_bytes([b[at], b[at + 1]]);
     let shader = |pointer: Option<fastfile_t6::Ptr>| -> Option<(String, Vec<u8>)> {
@@ -573,7 +586,10 @@ fn read_technique_set(
             let passes = (0..u32::from(pass_count))
                 .map(|p| {
                     let pass = blocks
-                        .bytes(technique.at(TECHNIQUE_HEADER + MATERIAL_PASS * p), MATERIAL_PASS as usize)
+                        .bytes(
+                            technique.at(TECHNIQUE_HEADER + MATERIAL_PASS * p),
+                            MATERIAL_PASS as usize,
+                        )
                         .ok()?;
                     let (vertex_name, vertex) = shader(decode_ptr(header_u32(pass, 4)?))?;
                     let (pixel_name, pixel) = shader(decode_ptr(header_u32(pass, 8)?))?;
@@ -586,11 +602,14 @@ fn read_technique_set(
                             let def = header_u32(raw, 8)?;
                             let literal = matches!(
                                 kind,
-                                argument_type::LITERAL_VERTEX_CONST | argument_type::LITERAL_PIXEL_CONST
+                                argument_type::LITERAL_VERTEX_CONST
+                                    | argument_type::LITERAL_PIXEL_CONST
                             )
                             .then(|| {
                                 let words = blocks.bytes(decode_ptr(def)?, 16).ok()?;
-                                Some(core::array::from_fn(|i| header_u32(words, 4 * i).unwrap_or(0)))
+                                Some(core::array::from_fn(|i| {
+                                    header_u32(words, 4 * i).unwrap_or(0)
+                                }))
                             })
                             .flatten();
                             Some(T6Argument {
@@ -617,7 +636,9 @@ fn read_technique_set(
         })
         .collect();
     Some(T6TechniqueSet {
-        name: header_str(load, header, 0)?.trim_start_matches(',').to_owned(),
+        name: header_str(load, header, 0)?
+            .trim_start_matches(',')
+            .to_owned(),
         techniques,
     })
 }
@@ -628,6 +649,7 @@ const T6_TECHNIQUE_COUNT: usize = 36;
 /// (read once per name into `techsets`), every texture decoded as T6
 /// shaders sample it (`decoded` shares them across materials), and the
 /// constants.
+#[allow(clippy::too_many_arguments)]
 fn capture_native(
     load: &fastfile_t6::ZoneLoad,
     zones: &[&fastfile_t6::ZoneLoad],
@@ -674,7 +696,9 @@ fn capture_native(
                 techsets.insert(technique_set.clone(), set);
             }
             None => {
-                report.push(format!("t6 native: {technique_set}: technique set unreadable"));
+                report.push(format!(
+                    "t6 native: {technique_set}: technique set unreadable"
+                ));
                 return None;
             }
         }
@@ -723,7 +747,11 @@ fn capture_native(
             Some(texels) => texels.clone(),
             None => {
                 let texels = read_streamed_image(load, image, ipaks).and_then(|(_, iwi)| {
-                    asset_material::decode_iwi_texture_native(&iwi, t6_sampler_state(sampler_state), false)
+                    asset_material::decode_iwi_texture_native(
+                        &iwi,
+                        t6_sampler_state(sampler_state),
+                        false,
+                    )
                 });
                 match texels {
                     Ok(texels) => {
@@ -764,12 +792,17 @@ fn capture_native(
         .filter_map(|index| {
             let bytes = load
                 .blocks
-                .bytes(constant_table?.at(index * MATERIAL_CONSTANT_DEF), MATERIAL_CONSTANT_DEF as usize)
+                .bytes(
+                    constant_table?.at(index * MATERIAL_CONSTANT_DEF),
+                    MATERIAL_CONSTANT_DEF as usize,
+                )
                 .ok()?;
             Some(asset_material::MaterialConstant {
                 name_hash: header_u32(bytes, 0)?,
                 name: bytes[4..16].try_into().ok()?,
-                literal: core::array::from_fn(|i| f32::from_bits(header_u32(bytes, 16 + 4 * i).unwrap_or(0))),
+                literal: core::array::from_fn(|i| {
+                    f32::from_bits(header_u32(bytes, 16 + 4 * i).unwrap_or(0))
+                }),
             })
         })
         .collect();
@@ -833,10 +866,13 @@ fn capture_weapon_icons(
                     .filter_map(|unique| {
                         unique.asset_field_name(fastfile_t6::weapon::unique::OVERLAY_MATERIAL)
                     })
-                    .chain(weapon.variant_asset_name(fastfile_t6::weapon::variant::OVERLAY_MATERIAL));
+                    .chain(
+                        weapon.variant_asset_name(fastfile_t6::weapon::variant::OVERLAY_MATERIAL),
+                    );
                 wanted.extend(overlays.map(str::to_ascii_lowercase));
                 // An equipment's HUD icon.
-                if let Some(icon) = weapon.def_loaded_asset_name(fastfile_t6::weapon::def::HUD_ICON) {
+                if let Some(icon) = weapon.def_loaded_asset_name(fastfile_t6::weapon::def::HUD_ICON)
+                {
                     wanted.insert(asset_game::t6_model_name(icon).to_ascii_lowercase());
                 }
             }
@@ -849,7 +885,10 @@ fn capture_weapon_icons(
             }
             for row in 0..table.rows {
                 let cell = |column: usize| {
-                    table.cells.get(row * table.columns + column).map_or("", String::as_str)
+                    table
+                        .cells
+                        .get(row * table.columns + column)
+                        .map_or("", String::as_str)
                 };
                 // The attachment table's icons (column 6), every row an
                 // attachment's; the stats table's, its weapon rows.
@@ -885,8 +924,7 @@ fn capture_weapon_icons(
             if asset.ty != fastfile_t6::AssetType::Material {
                 continue;
             }
-            let Some(name) = header_str(load, &asset.header, 0).map(str::to_ascii_lowercase)
-            else {
+            let Some(name) = header_str(load, &asset.header, 0).map(str::to_ascii_lowercase) else {
                 continue;
             };
             if !wanted.remove(&name) {
@@ -930,7 +968,9 @@ fn capture_icon(
         if load.blocks.u32_at(def).ok() != Some(COLOR_MAP_HASH) {
             continue;
         }
-        let image = load.asset_in(material, def.at(12)).ok_or("colour map without an image")?;
+        let image = load
+            .asset_in(material, def.at(12))
+            .ok_or("colour map without an image")?;
         let (name, bytes) = match read_streamed_image(load, image, ipaks) {
             Ok(read) => read,
             // A `,name` image is another zone's: read that zone's.
@@ -941,7 +981,9 @@ fn capture_icon(
                         zone.assets
                             .iter()
                             .filter(|asset| asset.ty == fastfile_t6::AssetType::Image)
-                            .filter(|asset| header_str(zone, &asset.header, IMAGE_NAME) == Some(name))
+                            .filter(|asset| {
+                                header_str(zone, &asset.header, IMAGE_NAME) == Some(name)
+                            })
                             .find_map(|asset| read_streamed_image(zone, asset, ipaks).ok())
                     })
                 })
@@ -1023,7 +1065,9 @@ fn capture_content(
                 .chain(asset_game::t6_attachment_ads_model(unique).map(|placed| (placed, true)));
             for (placed, view) in placed {
                 placements.insert(placed.copy.clone(), (placed.offset, placed.angles));
-                wanted.entry(placed.copy.clone()).or_insert((view, false, stand_in));
+                wanted
+                    .entry(placed.copy.clone())
+                    .or_insert((view, false, stand_in));
                 copies.insert(placed.copy, (placed.model, placed.tag));
             }
         }
@@ -1183,7 +1227,9 @@ fn capture_effects(
                 }
                 match capture_effect(load, asset, name, ipaks, &mut textures, content) {
                     Some(fx) => content.fx.push(fx),
-                    None => content.report.push(format!("t6 effects: {name}: unreadable")),
+                    None => content
+                        .report
+                        .push(format!("t6 effects: {name}: unreadable")),
                 }
             }
         }
@@ -1192,7 +1238,11 @@ fn capture_effects(
                 if elem.raw[FX_ELEM_TYPE] == FX_ELEM_RUNNER {
                     wanted.extend(elem.visuals.iter().filter(|v| !v.is_empty()).cloned());
                 }
-                for child in [&elem.effect_on_impact, &elem.effect_on_death, &elem.effect_emitted] {
+                for child in [
+                    &elem.effect_on_impact,
+                    &elem.effect_on_death,
+                    &elem.effect_emitted,
+                ] {
                     if !child.is_empty() {
                         wanted.insert(child.clone());
                     }
@@ -1243,8 +1293,7 @@ fn capture_effect(
         let samples = |field: usize, n: usize, stride: usize| -> Vec<u8> {
             decode_ptr(header_u32(&raw, field).unwrap_or(0))
                 .and_then(|p| blocks.bytes(p, n * stride).ok())
-                .map(<[u8]>::to_vec)
-                .unwrap_or_default()
+                .map_or_else(Vec::new, <[u8]>::to_vec)
         };
         let vel_samples = samples(
             FX_ELEM_VEL_SAMPLES,
@@ -1259,8 +1308,9 @@ fn capture_effect(
         // One visual sits in the element; more are an array it points at.
         let slots: Vec<fastfile_t6::Ptr> = if visual_count > 1 {
             decode_ptr(header_u32(&raw, FX_ELEM_VISUALS as usize).unwrap_or(0))
-                .map(|arr| (0..visual_count as u32).map(|v| arr.at(v * 4)).collect())
-                .unwrap_or_default()
+                .map_or_else(Vec::new, |arr| {
+                    (0..visual_count as u32).map(|v| arr.at(v * 4)).collect()
+                })
         } else if visual_count == 1 {
             vec![at.at(FX_ELEM_VISUALS)]
         } else {
@@ -1292,13 +1342,10 @@ fn capture_effect(
                     .map(str::to_owned),
                 _ => None,
             };
-            visuals.push(visual.unwrap_or_default());
+            visuals.push(visual.unwrap_or_else(String::new));
         }
-        let child = |field: usize| {
-            header_str(load, &raw, field)
-                .map(str::to_owned)
-                .unwrap_or_default()
-        };
+        let child =
+            |field: usize| header_str(load, &raw, field).map_or_else(String::new, str::to_owned);
         fx.elems.push(asset_game::T6FxElemCapture {
             vel_samples,
             vis_samples,

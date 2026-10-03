@@ -18,9 +18,8 @@ use dxbc_sm5::wgsl::{
 use crate::argument::RuntimeArgumentBinding;
 use crate::sm3::{Sm3Register, Sm3RegisterFile};
 use crate::sm3_abi::{
-    ConstantBinding, ConstantSource, PassAbiRefusal, PassProgramAbi, SamplerBinding,
-    SamplerSource, SamplerTextureDimension, Semantic, VaryingBinding, VertexAttribute,
-    routed_attributes,
+    ConstantBinding, ConstantSource, PassAbiRefusal, PassProgramAbi, SamplerBinding, SamplerSource,
+    SamplerTextureDimension, Semantic, VaryingBinding, VertexAttribute, routed_attributes,
 };
 use crate::stage::RuntimeShaderStage;
 use crate::vertex_decl::RuntimeVertexDecl;
@@ -42,10 +41,18 @@ pub fn dxbc_constant_rows(shader: &Shader) -> Result<Vec<ConstantRow>, PassAbiRe
 
 /// The texture/sampler pairs a pass samples, both stages together, in the
 /// order its virtual sampler registers number them.
-pub fn dxbc_texture_slots(vertex: &Shader, pixel: &Shader) -> Result<Vec<TextureSlot>, PassAbiRefusal> {
-    let mut slots: BTreeSet<TextureSlot> =
-        vertex.texture_slots().map_err(|_| PassAbiRefusal::DxbcProgram)?;
-    slots.extend(pixel.texture_slots().map_err(|_| PassAbiRefusal::DxbcProgram)?);
+pub fn dxbc_texture_slots(
+    vertex: &Shader,
+    pixel: &Shader,
+) -> Result<Vec<TextureSlot>, PassAbiRefusal> {
+    let mut slots: BTreeSet<TextureSlot> = vertex
+        .texture_slots()
+        .map_err(|_| PassAbiRefusal::DxbcProgram)?;
+    slots.extend(
+        pixel
+            .texture_slots()
+            .map_err(|_| PassAbiRefusal::DxbcProgram)?,
+    );
     Ok(slots.into_iter().collect())
 }
 
@@ -177,10 +184,11 @@ pub fn build_dxbc_pass_abi(
     let mut vertex_inputs = Vec::new();
     let mut used_attributes = Vec::new();
     for element in &vertex.input.elements {
-        let semantic = semantic_of(&element.semantic, element.semantic_index)
-            .ok_or(PassAbiRefusal::DxbcVertexInputUnrouted {
+        let semantic = semantic_of(&element.semantic, element.semantic_index).ok_or(
+            PassAbiRefusal::DxbcVertexInputUnrouted {
                 register: element.register,
-            })?;
+            },
+        )?;
         let Some(attribute) = attributes.iter().find(|a| a.semantic == semantic) else {
             if semantic.usage == vd::D3DDECLUSAGE_POSITION {
                 return Err(PassAbiRefusal::DxbcVertexInputUnrouted {
@@ -207,9 +215,7 @@ pub fn build_dxbc_pass_abi(
                 RuntimeArgumentBinding::MaterialTexture {
                     destination,
                     name_hash,
-                } if destination == register => {
-                    Some(SamplerSource::MaterialTexture { name_hash })
-                }
+                } if destination == register => Some(SamplerSource::MaterialTexture { name_hash }),
                 RuntimeArgumentBinding::CodeTexture { destination, index }
                     if destination == register =>
                 {

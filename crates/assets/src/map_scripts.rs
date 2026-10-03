@@ -1,5 +1,5 @@
 /// T6 equipment under IW4 rules, after T6's own scripts (see the file).
-pub(crate) const T6_EQUIPMENT: &str = include_str!("t6_equipment.gsc");
+pub(crate) const T6_EQUIPMENT: &str = include_str!("t6_equipment.gsc.txt");
 
 pub(crate) const RADIATION: &str = r#"main()
 {

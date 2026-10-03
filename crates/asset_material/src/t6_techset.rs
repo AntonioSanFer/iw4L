@@ -240,8 +240,12 @@ fn engine_value(name: &str) -> EngineValue {
         "lightingLookupScale" => Code("LIGHTING_LOOKUP_SCALE"),
         // Both spherical harmonics agree, so the reflection probe is scaled
         // by one.
-        "gridLightingSH0" | "gridLightingSH1" | "gridLightingSH2" | "reflectionLightingSH0"
-        | "reflectionLightingSH1" | "reflectionLightingSH2" => Literal([0.25; 4]),
+        "gridLightingSH0"
+        | "gridLightingSH1"
+        | "gridLightingSH2"
+        | "reflectionLightingSH0"
+        | "reflectionLightingSH1"
+        | "reflectionLightingSH2" => Literal([0.25; 4]),
         // Fog colours with no weight leave the colour unfogged.
         _ => Literal([0.0; 4]),
     }
@@ -250,9 +254,10 @@ fn engine_value(name: &str) -> EngineValue {
 /// The reflection variable covering a constant-buffer row: its name and
 /// the row it starts at.
 fn variable_at(reflection: &Reflection, row: ConstantRow) -> Option<(&str, u32)> {
-    let binding = reflection.bindings.iter().find(|b| {
-        b.kind == BindingKind::ConstantBuffer && b.bind_point == row.buffer
-    })?;
+    let binding = reflection
+        .bindings
+        .iter()
+        .find(|b| b.kind == BindingKind::ConstantBuffer && b.bind_point == row.buffer)?;
     let buffer = reflection
         .constant_buffers
         .iter()
@@ -300,12 +305,12 @@ enum Stage {
 
 /// The material constants of `kind` a pass fills row `row` of `buffer`
 /// with.
-fn material_arguments_in_row<'a>(
-    arguments: &'a [T6Argument],
+fn material_arguments_in_row(
+    arguments: &[T6Argument],
     kind: u16,
     buffer: u32,
     row: u32,
-) -> Vec<&'a T6Argument> {
+) -> Vec<&T6Argument> {
     arguments
         .iter()
         .filter(|a| {
@@ -323,14 +328,16 @@ fn material_arguments_in_row<'a>(
 /// [`MaterialCatalog::t6_material`] assembles its value from the material's
 /// constants.
 fn packed_row_hash(arguments: &[&T6Argument]) -> Option<u32> {
+    const FNV_OFFSET: u32 = 0x811c_9dc5;
+    const FNV_PRIME: u32 = 0x0100_0193;
     let packed = arguments.len() > 1 || arguments.iter().any(|a| a.offset % 16 != 0 || a.size < 16);
     packed.then(|| {
-        arguments.iter().fold(0x811c_9dc5u32, |hash, a| {
+        arguments.iter().fold(FNV_OFFSET, |hash, a| {
             [a.def, u32::from(a.offset % 16)]
                 .into_iter()
                 .flat_map(u32::to_le_bytes)
                 .fold(hash, |hash, byte| {
-                    (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193)
+                    (hash ^ u32::from(byte)).wrapping_mul(FNV_PRIME)
                 })
         })
     })
@@ -346,8 +353,16 @@ fn constant_argument(
 ) -> (Tier, OwnedShaderArgument) {
     use argument_type as t;
     let (material_kind, literal_kind, code_kind) = match stage {
-        Stage::Vertex => (t::MATERIAL_VERTEX_CONST, t::LITERAL_VERTEX_CONST, t::CODE_VERTEX_CONST),
-        Stage::Pixel => (t::MATERIAL_PIXEL_CONST, t::LITERAL_PIXEL_CONST, t::CODE_PIXEL_CONST),
+        Stage::Vertex => (
+            t::MATERIAL_VERTEX_CONST,
+            t::LITERAL_VERTEX_CONST,
+            t::CODE_VERTEX_CONST,
+        ),
+        Stage::Pixel => (
+            t::MATERIAL_PIXEL_CONST,
+            t::LITERAL_PIXEL_CONST,
+            t::CODE_PIXEL_CONST,
+        ),
     };
     let covering = arguments.iter().find(|a| {
         [material_kind, literal_kind, code_kind].contains(&a.kind)
@@ -372,19 +387,28 @@ fn constant_argument(
             return (Tier::Stable, argument);
         }
         Some(a) if a.kind == literal_kind => {
-            return (Tier::Stable, literal_argument(stage, destination, a.literal));
+            return (
+                Tier::Stable,
+                literal_argument(stage, destination, a.literal),
+            );
         }
         _ => {}
     }
     let Some((name, first)) = variable_at(reflection, row) else {
         gaps.insert(format!("cb{}[{}]", row.buffer, row.row));
-        return (Tier::Stable, literal_argument(stage, destination, Some([0; 4])));
+        return (
+            Tier::Stable,
+            literal_argument(stage, destination, Some([0; 4])),
+        );
     };
     match engine_value(name) {
         EngineValue::Code(code) => {
             let Some(index) = iw4_code_const_index(code) else {
                 gaps.insert(format!("{name}: no IW4 {code}"));
-                return (Tier::Stable, literal_argument(stage, destination, Some([0; 4])));
+                return (
+                    Tier::Stable,
+                    literal_argument(stage, destination, Some([0; 4])),
+                );
             };
             let first_row = (row.row - first) as u8;
             let argument = match stage {
@@ -410,7 +434,11 @@ fn constant_argument(
     }
 }
 
-fn literal_argument(stage: Stage, destination: u16, words: Option<[u32; 4]>) -> OwnedShaderArgument {
+fn literal_argument(
+    stage: Stage,
+    destination: u16,
+    words: Option<[u32; 4]>,
+) -> OwnedShaderArgument {
     match stage {
         Stage::Vertex => OwnedShaderArgument::LiteralVertexConstant { destination, words },
         Stage::Pixel => OwnedShaderArgument::LiteralPixelConstant { destination, words },
@@ -440,7 +468,7 @@ fn sampler_argument(
             },
         ));
     }
-    let name = texture_name(reflection, slot.texture).unwrap_or_default();
+    let name = texture_name(reflection, slot.texture).unwrap_or("");
     let lower = name.to_ascii_lowercase();
     let code = if lower.contains("reflectionprobe") {
         return None;
@@ -467,7 +495,11 @@ fn sampler_argument(
         ));
     } else {
         gaps.insert(format!("t{} {name}", slot.texture));
-        if slot.dimension == TextureDimension::D2 { "WHITE" } else { "BLACK" }
+        if slot.dimension == TextureDimension::D2 {
+            "WHITE"
+        } else {
+            "BLACK"
+        }
     };
     let index = iw4_code_texture_index(code)?;
     Some((
@@ -495,7 +527,10 @@ fn reads_float_z(pass: &T6Pass) -> bool {
 fn t6_vertex_decl() -> AuthoredVertexDecl {
     let mut routing = [[0u8; 2]; asset_iw4::vertex_decl::ROUTING_COUNT];
     // [source, destination]: POSITION, COLOR0, TEXCOORD0, NORMAL, TEXCOORD2.
-    for (at, pair) in [[0, 0], [1, 2], [2, 5], [3, 1], [4, 7]].into_iter().enumerate() {
+    for (at, pair) in [[0, 0], [1, 2], [2, 5], [3, 1], [4, 7]]
+        .into_iter()
+        .enumerate()
+    {
         routing[at] = pair;
     }
     AuthoredVertexDecl {
@@ -515,10 +550,15 @@ impl MaterialCatalog {
         vertex_decl: usize,
         gaps: &mut BTreeSet<String>,
     ) -> Result<OwnedMaterialPass, String> {
-        let vertex = Shader::parse(&pass.vertex).map_err(|e| format!("{}: {e}", pass.vertex_name))?;
+        let vertex =
+            Shader::parse(&pass.vertex).map_err(|e| format!("{}: {e}", pass.vertex_name))?;
         let pixel = Shader::parse(&pass.pixel).map_err(|e| format!("{}: {e}", pass.pixel_name))?;
         let rows = |shader: &Shader| -> Result<Vec<ConstantRow>, String> {
-            Ok(shader.constant_rows().map_err(|e| e.to_string())?.into_iter().collect())
+            Ok(shader
+                .constant_rows()
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .collect())
         };
         let mut arguments = Vec::new();
         for (stage, shader) in [(Stage::Vertex, &vertex), (Stage::Pixel, &pixel)] {
@@ -551,18 +591,19 @@ impl MaterialCatalog {
             count(Tier::Object),
             count(Tier::Stable),
         );
-        let shader_ref = |this: &mut Self, name: &str, kind, program: &[u8], tag: u32| OwnedShaderRef {
-            pointer_identity: AssetPointerIdentity {
-                block: u8::MAX,
-                offset: tag,
-            },
-            shader: Some(this.link_shader(AuthoredShader {
-                namespace: crate::AssetNamespace::Iw4,
-                name: AssetRef::Real(name.to_owned()),
-                kind,
-                program: program.to_vec(),
-            })),
-        };
+        let shader_ref =
+            |this: &mut Self, name: &str, kind, program: &[u8], tag: u32| OwnedShaderRef {
+                pointer_identity: AssetPointerIdentity {
+                    block: u8::MAX,
+                    offset: tag,
+                },
+                shader: Some(this.link_shader(AuthoredShader {
+                    namespace: crate::AssetNamespace::Iw4,
+                    name: AssetRef::Real(name.to_owned()),
+                    kind,
+                    program: program.to_vec(),
+                })),
+            };
         Ok(OwnedMaterialPass {
             pass_index,
             vertex_decl_identity: AssetPointerIdentity {
@@ -570,15 +611,30 @@ impl MaterialCatalog {
                 offset: vertex_decl as u32,
             },
             vertex_decl: Some(vertex_decl),
-            vertex_shader: shader_ref(self, &pass.vertex_name, AssetType::VertexShader, &pass.vertex, 0),
-            pixel_shader: shader_ref(self, &pass.pixel_name, AssetType::PixelShader, &pass.pixel, 1),
+            vertex_shader: shader_ref(
+                self,
+                &pass.vertex_name,
+                AssetType::VertexShader,
+                &pass.vertex,
+                0,
+            ),
+            pixel_shader: shader_ref(
+                self,
+                &pass.pixel_name,
+                AssetType::PixelShader,
+                &pass.pixel,
+                1,
+            ),
             per_prim_arg_count: per_prim,
             per_obj_arg_count: per_obj,
             stable_arg_count: stable,
             custom_sampler_flags: 0,
             // The T5 flag layout: 0x01 binds the reflection probe to t15.
             t5_custom_sampler_flags: pass.custom_sampler_flags,
-            arguments: arguments.into_iter().map(|(_, argument)| argument).collect(),
+            arguments: arguments
+                .into_iter()
+                .map(|(_, argument)| argument)
+                .collect(),
             arguments_truncated: false,
         })
     }
@@ -586,7 +642,12 @@ impl MaterialCatalog {
     /// Links `set` as an IW4-namespace technique set of the same name, and
     /// returns its index; `report` gets a line per technique that could not
     /// be translated and per value IW4 has no source for.
-    pub fn link_t6_technique_set(&mut self, set: &T6TechniqueSet, draw: T6Draw, report: &mut Vec<String>) -> usize {
+    pub fn link_t6_technique_set(
+        &mut self,
+        set: &T6TechniqueSet,
+        draw: T6Draw,
+        report: &mut Vec<String>,
+    ) -> usize {
         let vertex_decl = self.link_vertex_decl(t6_vertex_decl());
         let mut gaps = BTreeSet::new();
         let mut slots = vec![None; IW4_TECHNIQUE_TYPE_COUNT];
@@ -709,6 +770,7 @@ impl MaterialCatalog {
     /// textures and constants are the T6 material's own. A texture the set
     /// samples that the material does not have reads a default, as in T6:
     /// a flat normal, no specular, white otherwise.
+    #[allow(clippy::too_many_arguments)]
     pub fn t6_material(
         &mut self,
         donor: usize,
@@ -752,8 +814,12 @@ impl MaterialCatalog {
                     };
                 }
                 let (image, rgba) = match hash {
-                    NORMAL_MAP_HASH | ARM_NORMAL_MAP_HASH => ("$t6_flat_normal", [128, 128, 255, 255]),
-                    SPECULAR_MAP_HASH | ARM_SPECULAR_MAP_HASH | FLOAT_Z_HASH => ("$t6_black", [0, 0, 0, 0]),
+                    NORMAL_MAP_HASH | ARM_NORMAL_MAP_HASH => {
+                        ("$t6_flat_normal", [128, 128, 255, 255])
+                    }
+                    SPECULAR_MAP_HASH | ARM_SPECULAR_MAP_HASH | FLOAT_Z_HASH => {
+                        ("$t6_black", [0, 0, 0, 0])
+                    }
                     _ => ("$t6_white", [255; 4]),
                 };
                 T6Texture {
