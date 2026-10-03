@@ -716,16 +716,19 @@ pub(crate) fn route(
             }
         })
         .unwrap_or_default();
-    // IW4's class menu shows a camouflage by its swatch.
-    let image = match choices.get(state.page * PAGE_SIZE + state.hover) {
-        Some(camo) if state.camo && !camo.is_empty() => {
-            format!("iw4:material/weapon_camo_menu_{camo}")
-        }
-        _ => image,
+    // A camouflage previews as its swatch, as wide as the class panel
+    // lays it.
+    let image = if state.camo {
+        choices
+            .get(state.page * PAGE_SIZE + state.hover)
+            .filter(|camo| !camo.is_empty())
+            .map(|camo| format!("iw4:material/weapon_camo_menu_{camo}"))
+            .unwrap_or_default()
+    } else {
+        image
     };
     dvars.set("ui_class_preview", image);
     let square_preview = state.attachments
-        || state.camo
         || matches!(
             state.row,
             Some(
