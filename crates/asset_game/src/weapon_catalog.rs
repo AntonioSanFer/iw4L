@@ -6016,10 +6016,10 @@ impl WeaponBuild {
                     entry.world_model = world_by_def.get(&key).cloned();
                 }
             }
-            if entry.camo_models.is_empty() {
-                if let Some(key) = entry.weap_def {
-                    entry.camo_models = camo_by_def.get(&key).cloned().unwrap_or_default();
-                }
+            if entry.camo_models.is_empty()
+                && let Some(shared) = entry.weap_def.and_then(|key| camo_by_def.get(&key))
+            {
+                entry.camo_models = shared.clone();
             }
             if entry.projectile_model.is_none() {
                 if let Some(key) = entry.weap_def {

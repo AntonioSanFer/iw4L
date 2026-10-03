@@ -57,10 +57,9 @@ fn camo_label(camo: &str) -> String {
     camo.split('_')
         .map(|word| {
             let mut chars = word.chars();
-            chars
-                .next()
-                .map(|first| first.to_uppercase().chain(chars).collect::<String>())
-                .unwrap_or_default()
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().chain(chars).collect::<String>()
+            })
         })
         .collect::<Vec<_>>()
         .join(" ")
@@ -722,8 +721,9 @@ pub(crate) fn route(
         choices
             .get(state.page * PAGE_SIZE + state.hover)
             .filter(|camo| !camo.is_empty())
-            .map(|camo| format!("iw4:material/weapon_camo_menu_{camo}"))
-            .unwrap_or_default()
+            .map_or_else(String::new, |camo| {
+                format!("iw4:material/weapon_camo_menu_{camo}")
+            })
     } else {
         image
     };

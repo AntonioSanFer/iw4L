@@ -172,11 +172,11 @@ fn decode_slots(text: &str) -> Option<Vec<ClassSlotState>> {
     let mut slots = Vec::new();
     for line in lines.filter(|line| !line.is_empty()) {
         let mut fields: Vec<&str> = line.split('\t').collect();
-        let camos = match fields.len() {
-            13 => {
-                let secondary = fields.pop().unwrap_or_default();
-                let primary = fields.pop().unwrap_or_default();
-                [primary.to_owned(), secondary.to_owned()]
+        let camos = match fields.as_slice() {
+            [.., primary, secondary] if fields.len() == 13 => {
+                let camos = [(*primary).to_owned(), (*secondary).to_owned()];
+                fields.truncate(11);
+                camos
             }
             _ => Default::default(),
         };
