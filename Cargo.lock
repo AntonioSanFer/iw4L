@@ -319,7 +319,6 @@ dependencies = [
  "fastfile_iw5",
  "fastfile_t5",
  "fastfile_t6",
- "symphonia",
 ]
 
 [[package]]
