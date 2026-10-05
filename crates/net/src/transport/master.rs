@@ -37,12 +37,14 @@ type Result<T> = std::result::Result<T, Error>;
 pub const CONTENT_IW4: u8 = 1 << 0;
 pub const CONTENT_IW5: u8 = 1 << 1;
 pub const CONTENT_T5: u8 = 1 << 2;
+pub const CONTENT_T6: u8 = 1 << 3;
 
-pub const fn content_inventory(iw4: bool, iw5: bool, t5: bool) -> ContentFlags {
+pub const fn content_inventory(iw4: bool, iw5: bool, t5: bool, t6: bool) -> ContentFlags {
     ContentFlags(
         (if iw4 { CONTENT_IW4 } else { 0 })
             | (if iw5 { CONTENT_IW5 } else { 0 })
-            | (if t5 { CONTENT_T5 } else { 0 }),
+            | (if t5 { CONTENT_T5 } else { 0 })
+            | (if t6 { CONTENT_T6 } else { 0 }),
     )
 }
 
@@ -54,6 +56,7 @@ pub fn content_required_by_map(map: &str) -> Result<ContentFlags> {
         "iw4" => CONTENT_IW4,
         "iw5" => CONTENT_IW5,
         "t5" => CONTENT_T5,
+        "t6" => CONTENT_T6,
         other => return Err(format!("unknown content namespace `{other}` in map `{map}`").into()),
     }))
 }
@@ -69,7 +72,10 @@ pub fn content_names(flags: ContentFlags) -> String {
     if flags.0 & CONTENT_T5 != 0 {
         names.push("t5");
     }
-    if flags.0 & !(CONTENT_IW4 | CONTENT_IW5 | CONTENT_T5) != 0 {
+    if flags.0 & CONTENT_T6 != 0 {
+        names.push("t6");
+    }
+    if flags.0 & !(CONTENT_IW4 | CONTENT_IW5 | CONTENT_T5 | CONTENT_T6) != 0 {
         names.push("unknown");
     }
     names.join(",")
@@ -82,6 +88,7 @@ const HOST_CONTROL_CAP: usize = 32;
 const BOOTSTRAP_PRIORITY: i32 = -32;
 const IO_DEADLINE: Duration = Duration::from_secs(8);
 const LEAVE_DRAIN: Duration = Duration::from_millis(500);
+const DATAGRAM_SEND_BUFFER: usize = 1024 * 1024;
 const QUEUE_POLL: Duration = Duration::from_millis(5);
 const WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -399,6 +406,8 @@ pub struct MasterAdvert {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MasterBrowserSnapshot {
+    pub community_name: String,
+    pub ping_ms: Option<u64>,
     pub generation: u64,
     pub loading: bool,
     pub adverts: Vec<MasterAdvert>,
@@ -858,6 +867,9 @@ fn arm_master_browser(
         return;
     }
     let state = Arc::new(Mutex::new(MasterBrowserSnapshot {
+        community_name: updater::selected()
+            .map(|community| community.name.clone())
+            .unwrap_or_default(),
         loading: true,
         have: browser_config.have,
         ..default()
@@ -1037,59 +1049,67 @@ fn browser_worker(
                 return;
             }
             state.lock().expect("master browser state poisoned").loading = true;
-            let result: Result<(u64, Vec<master_protocol::Advert>)> = io_timeout(&cancel, async {
-                let (_endpoint, connection) = connect(&target, &cancel).await?;
-                let (mut send, mut recv) = io_timeout(&cancel, connection.open_bi()).await?;
-                send.set_priority(0)?;
-                write_frame(
-                    &mut send,
-                    &ControlFrame::Hello(ControlHello {
-                        protocol_version: master_protocol::PROTOCOL_VERSION,
-                        game_protocol: crate::PROTOCOL_VERSION,
-                        role: EndpointRole::Cli,
-                        build: endpoint_build(),
-                        player_name: String::new(),
-                    }),
-                )
-                .await?;
-                write_frame(
-                    &mut send,
-                    &ControlFrame::Request(ControlRequest {
-                        request_id: 1,
-                        body: RequestBody::ListRooms,
-                    }),
-                )
-                .await?;
-                loop {
-                    match read_frame(&mut recv).await? {
-                        ControlFrame::Response(ControlResponse {
+            let result: Result<(u64, Vec<master_protocol::Advert>, u64)> =
+                io_timeout(&cancel, async {
+                    let (_endpoint, connection) = connect(&target, &cancel).await?;
+                    let (mut send, mut recv) = io_timeout(&cancel, connection.open_bi()).await?;
+                    send.set_priority(0)?;
+                    write_frame(
+                        &mut send,
+                        &ControlFrame::Hello(ControlHello {
+                            protocol_version: master_protocol::PROTOCOL_VERSION,
+                            game_protocol: crate::PROTOCOL_VERSION,
+                            role: EndpointRole::Cli,
+                            build: endpoint_build(),
+                            player_name: String::new(),
+                        }),
+                    )
+                    .await?;
+                    write_frame(
+                        &mut send,
+                        &ControlFrame::Request(ControlRequest {
                             request_id: 1,
-                            body:
-                                ResponseBody::RoomList {
+                            body: RequestBody::ListRooms,
+                        }),
+                    )
+                    .await?;
+                    loop {
+                        match read_frame(&mut recv).await? {
+                            ControlFrame::Response(ControlResponse {
+                                request_id: 1,
+                                body:
+                                    ResponseBody::RoomList {
+                                        generation,
+                                        adverts,
+                                    },
+                            }) => {
+                                return Result::Ok((
                                     generation,
                                     adverts,
-                                },
-                        }) => return Result::Ok((generation, adverts)),
-                        ControlFrame::Response(ControlResponse {
-                            body: ResponseBody::Error(error),
-                            ..
-                        }) => return Err(error.into()),
-                        ControlFrame::RoomView(_)
-                        | ControlFrame::Closed { .. }
-                        | ControlFrame::PeerEvent(_)
-                        | ControlFrame::Hello(_)
-                        | ControlFrame::Relay(_) => {}
-                        other => {
-                            return Err(format!("unexpected browser frame {other:?}").into());
+                                    connection.rtt().as_millis().max(1) as u64,
+                                ));
+                            }
+                            ControlFrame::Response(ControlResponse {
+                                body: ResponseBody::Error(error),
+                                ..
+                            }) => return Err(error.into()),
+                            ControlFrame::RoomView(_)
+                            | ControlFrame::Closed { .. }
+                            | ControlFrame::PeerEvent(_)
+                            | ControlFrame::Hello(_)
+                            | ControlFrame::Relay(_) => {}
+                            other => {
+                                return Err(format!("unexpected browser frame {other:?}").into());
+                            }
                         }
                     }
-                }
-            })
-            .await;
+                })
+                .await;
             let mut current = state.lock().expect("master browser state poisoned");
             current.loading = false;
             match result {
-                Ok((generation, adverts)) => {
+                Ok((generation, adverts, ping_ms)) => {
+                    current.ping_ms = Some(ping_ms);
                     current.generation = generation;
                     let have = current.have;
                     current.adverts = adverts
@@ -1112,6 +1132,7 @@ fn browser_worker(
                     current.error = None;
                 }
                 Err(error) => {
+                    current.ping_ms = None;
                     let message = error.to_string();
                     if !cancel.is_cancelled() && current.error.as_deref() != Some(message.as_str())
                     {
@@ -1237,7 +1258,18 @@ fn apply_master_lifecycle(
     if let Some(hub) = hub.as_mut()
         && matches!(state, MasterBridgeState::Hosting { .. })
     {
-        hub.reconcile_relay_membership(state.members(), state.identity().member_id);
+        let occupied: Vec<_> = authority
+            .as_ref()
+            .map(|authority| {
+                authority
+                    .0
+                    .clients_scoreboard()
+                    .into_iter()
+                    .map(|(client, _)| client.0)
+                    .collect()
+            })
+            .unwrap_or_else(Vec::new);
+        hub.reconcile_relay_membership(state.members(), state.identity().member_id, &occupied);
     }
     for fact in bridge.drain_facts() {
         match fact {
@@ -2923,8 +2955,8 @@ async fn datagram_ingress(
                 let reassembler = reassemblers.entry(member).or_insert_with(relay_reassembler);
                 match reassembler.push(payload) {
                     Ok(Some(packet)) => {
-                        if let Err(error) = mailbox.push_inbound(member, packet) {
-                            diag::warn!(Net, "master {role} inbound mailbox: {error}");
+                        if mailbox.push_inbound(member, packet) {
+                            perf::net_leg("mail_drop_in", 0, 1);
                         }
                     }
                     Ok(None) => {}
@@ -3019,10 +3051,23 @@ async fn gameplay_egress(
 ) -> std::result::Result<(), TransportFault> {
     let mut fragmenter = relay_fragmenter();
     let mut tick = tokio::time::interval(QUEUE_POLL);
+    let mut sampled = tokio::time::Instant::now();
     loop {
         tokio::select! {
             _ = cancel.cancelled() => return Ok(()),
             _ = tick.tick() => {
+                if sampled.elapsed() >= Duration::from_millis(100) {
+                    sampled = tokio::time::Instant::now();
+                    let stats = connection.stats();
+                    perf::net_path(
+                        role,
+                        stats.path.rtt.as_micros() as u64,
+                        stats.path.cwnd,
+                        stats.path.lost_packets,
+                        stats.path.congestion_events,
+                        (DATAGRAM_SEND_BUFFER - connection.datagram_send_buffer_space()) as u64,
+                    );
+                }
                 for (member, packet) in mailbox.take_outbound() {
                     let fragments = match fragmenter.split(&packet) {
                         Ok(fragments) => fragments,

@@ -434,6 +434,7 @@ dependencies = [
  "fastfile_iw4",
  "fastfile_iw5",
  "fastfile_t5",
+ "fastfile_t6",
  "fx_iw4",
  "lighting_iw4",
  "weapon_iw4",
@@ -2842,6 +2843,7 @@ version = "0.1.0"
 name = "fastfile_t6"
 version = "0.1.0"
 dependencies = [
+ "libm",
  "sha1",
 ]
 
@@ -3083,6 +3085,7 @@ dependencies = [
 name = "fx_iw4"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "libm",
 ]
 
