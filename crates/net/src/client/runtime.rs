@@ -1060,6 +1060,8 @@ pub fn sample_client_input(
             );
         }
     }
+    actions.client.airborne =
+        ps.is_some_and(|ps| ps.ground_entity_num == playerstate_iw4::ENTITYNUM_NONE);
     let mut cmd = build_usercmd(&mut actions, &look, 0);
     if cmd.buttons & playerstate_iw4::buttons::USE_RELOAD != 0
         && ps.is_some_and(|ps| ps.cursor_hint == 0)
