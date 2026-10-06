@@ -1,20 +1,20 @@
-#[cfg(all(unix, feature = "native"))]
+#[cfg(all(unix, not(target_os = "android"), feature = "native"))]
 mod event;
-#[cfg(not(all(unix, feature = "native")))]
+#[cfg(not(all(unix, not(target_os = "android"), feature = "native")))]
 #[path = "event_noop.rs"]
 mod event;
 pub mod frames;
 pub mod run;
-#[cfg(all(unix, feature = "native"))]
+#[cfg(all(unix, not(target_os = "android"), feature = "native"))]
 mod session;
-#[cfg(not(all(unix, feature = "native")))]
+#[cfg(not(all(unix, not(target_os = "android"), feature = "native")))]
 #[path = "session_noop.rs"]
 mod session;
 pub mod stats;
 mod switch;
-#[cfg(all(unix, feature = "native"))]
+#[cfg(all(unix, not(target_os = "android"), feature = "native"))]
 mod vocabulary;
-#[cfg(not(all(unix, feature = "native")))]
+#[cfg(not(all(unix, not(target_os = "android"), feature = "native")))]
 #[path = "vocabulary_noop.rs"]
 mod vocabulary;
 mod vocabulary_catalog;

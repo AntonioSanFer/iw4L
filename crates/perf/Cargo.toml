@@ -14,7 +14,7 @@ diag.workspace = true
 serde_json.workspace = true
 uuid = { version = "1", features = ["v4"] }
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(all(unix, not(target_os = "android")))'.dependencies]
 perfetto-sdk = { version = "1", optional = true }
 
 [lints]

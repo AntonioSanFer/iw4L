@@ -95,12 +95,7 @@ impl FolderPicks {
         let spawned = std::thread::Builder::new()
             .name("game folder dialog".into())
             .spawn(move || {
-                let mut dialog =
-                    rfd::FileDialog::new().set_title(format!("Choose the {} folder", game.title()));
-                if let Some(start) = start.filter(|start| start.is_dir()) {
-                    dialog = dialog.set_directory(start);
-                }
-                if let Some(folder) = dialog.pick_folder() {
+                if let Some(folder) = pick_folder(game, start) {
                     let _ = sender.send((game, folder));
                 }
                 dialog_open.store(false, Ordering::Release);
@@ -110,6 +105,22 @@ impl FolderPicks {
             warn!("could not open the folder dialog: {error}");
         }
     }
+}
+
+#[cfg(not(target_os = "android"))]
+fn pick_folder(game: OtherGame, start: Option<PathBuf>) -> Option<PathBuf> {
+    let mut dialog =
+        rfd::FileDialog::new().set_title(format!("Choose the {} folder", game.title()));
+    if let Some(start) = start.filter(|start| start.is_dir()) {
+        dialog = dialog.set_directory(start);
+    }
+    dialog.pick_folder()
+}
+
+// rfd has no Android backend; `open_dialog` returns before reaching this.
+#[cfg(target_os = "android")]
+fn pick_folder(_game: OtherGame, _start: Option<PathBuf>) -> Option<PathBuf> {
+    None
 }
 
 fn tail(text: &str, chars: usize) -> String {
