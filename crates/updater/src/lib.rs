@@ -101,6 +101,11 @@ pub fn startup() -> Result<Option<Vec<OsString>>> {
     if restarted {
         args.remove(0);
     }
+    // Android runs us inside app_process: the "executable directory" is
+    // /system/bin, which apps may not list, and there is nothing to update.
+    if cfg!(target_os = "android") {
+        return Ok(Some(args));
+    }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let root = exe.parent().ok_or("executable has no directory")?;
     let descriptor = if let Ok(path) = std::env::var("IW4L_COMMUNITY") {

@@ -182,6 +182,12 @@ pub(crate) fn configured_search_roots(root: &Path) -> Vec<PathBuf> {
     {
         roots.push(sdcard);
     }
+    #[cfg(target_os = "android")]
+    for found in shared_storage_installs() {
+        if !roots.contains(found) {
+            roots.push(found.clone());
+        }
+    }
     if let Some(library) = root.parent() {
         for title in SIBLING_TITLES {
             let sibling = library.join(title);
@@ -809,6 +815,71 @@ pub fn android_app_dir() -> PathBuf {
     std::env::var_os("ANDROID_PRIVATE")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/data/data/com.iw4l/files"))
+}
+
+/// Internal storage, then each removable volume (`/storage/XXXX-XXXX`).
+/// Apps may not list `/storage` itself, so volumes come from the mount table.
+#[cfg(target_os = "android")]
+pub fn storage_volumes() -> Vec<PathBuf> {
+    let mut volumes = vec![PathBuf::from("/storage/emulated/0")];
+    // Unreadable mount table: internal storage only.
+    let mounts = std::fs::read_to_string("/proc/self/mounts").unwrap_or_else(|_| String::new());
+    let mut cards: Vec<_> = mounts
+        .lines()
+        .filter_map(|line| line.split_whitespace().nth(1)?.strip_prefix("/storage/"))
+        .filter(|name| !name.contains('/') && !matches!(*name, "emulated" | "self"))
+        .map(|name| Path::new("/storage").join(name))
+        .collect();
+    cards.sort();
+    cards.dedup();
+    volumes.extend(cards);
+    volumes
+}
+
+/// Game installs copied anywhere shallow on shared storage, e.g.
+/// `/storage/XXXX-XXXX/Download/Call of Duty - Modern Warfare 2`. Android
+/// apps get no environment and their private games root is unreachable
+/// without root, so this is how MW2 is found there. Scanned once per process.
+#[cfg(target_os = "android")]
+fn shared_storage_installs() -> &'static [PathBuf] {
+    const DEPTH: usize = 3;
+    static FOUND: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
+    FOUND.get_or_init(|| {
+        let mut found = Vec::new();
+        let volumes = storage_volumes();
+        diag::info!(Zone, "storage volumes: {volumes:?}");
+        let mut pending: Vec<_> = volumes.into_iter().map(|dir| (dir, 0)).collect();
+        while let Some((dir, depth)) = pending.pop() {
+            if dir.join("zone").is_dir() {
+                found.push(dir);
+                continue;
+            }
+            if depth == DEPTH {
+                continue;
+            }
+            let entries = match std::fs::read_dir(&dir) {
+                Ok(entries) => entries,
+                Err(error) => {
+                    if depth == 0 {
+                        diag::warn!(Zone, "cannot list {}: {error}", dir.display());
+                    }
+                    continue;
+                }
+            };
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let skip = name
+                    .to_str()
+                    .is_none_or(|name| name.starts_with('.') || (depth == 0 && name == "Android"));
+                if !skip && entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    pending.push((entry.path(), depth + 1));
+                }
+            }
+        }
+        found.sort();
+        diag::info!(Zone, "shared-storage game installs: {found:?}");
+        found
+    })
 }
 
 pub fn ensure_artifacts_dir() -> Result<PathBuf, String> {

@@ -23,6 +23,8 @@ pub use discover::{
     list_mp_maps, load_dotenv, map_load_title, peek_zone_version, search_roots, set_game_folders,
     split_zone_key, zone_game_for_path, zone_version,
 };
+#[cfg(target_os = "android")]
+pub use discover::storage_volumes;
 pub use ipak::{IPak, ipak_name_hash};
 pub use iwd::{
     IwdFile, IwdIndex, IwdSoundIndex, cached_iwd_dirs, game_main_for_zone, game_mains_by_root,

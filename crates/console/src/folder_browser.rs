@@ -37,25 +37,12 @@ pub(crate) fn register(registry: &mut ConsoleRegistry) {
 
 #[cfg(target_os = "android")]
 fn storage_roots() -> Vec<(String, PathBuf)> {
-    let mut roots = vec![(
-        "Internal storage".to_owned(),
-        PathBuf::from("/storage/emulated/0"),
-    )];
-    // Removable volumes mount as `/storage/XXXX-XXXX`.
-    if let Ok(entries) = std::fs::read_dir("/storage") {
-        let mut cards: Vec<_> = entries
-            .flatten()
-            .filter_map(|entry| {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                let path = entry.path();
-                (!matches!(name.as_str(), "emulated" | "self") && path.is_dir())
-                    .then(|| (format!("SD card ({name})"), path))
-            })
-            .collect();
-        cards.sort();
-        roots.extend(cards);
-    }
-    roots
+    let mut volumes = asset_transport::storage_volumes().into_iter();
+    let internal = volumes
+        .next()
+        .map(|path| ("Internal storage".to_owned(), path));
+    let cards = volumes.map(|path| (format!("SD card ({})", path.display()), path));
+    internal.into_iter().chain(cards).collect()
 }
 
 #[cfg(not(target_os = "android"))]

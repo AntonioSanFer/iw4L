@@ -43,6 +43,11 @@ Only base wgpu features are requested; desktop extras (BC, wireframe, bindless,
 
 ## Game files on SD card
 
+Game installs (folders with a `zone/` subfolder) up to three folders deep on
+internal storage or any SD card are found at startup, e.g.
+`/storage/XXXX-XXXX/Download/Call of Duty - Modern Warfare 2`. SD cards come
+from `/proc/self/mounts`: apps may not list `/storage`. The log names the
+volumes scanned and the installs found.
 Precedence: `IW4L_GAMES` > `ANDROID_SDCARD_GAMES` > `<private>/games`;
 `settings.cfg` `game_folder_<key>` entries add per-game search roots.
 Example: `ANDROID_SDCARD_GAMES=/storage/XXXX-XXXX/MW2`.
