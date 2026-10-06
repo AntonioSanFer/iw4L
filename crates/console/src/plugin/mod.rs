@@ -211,6 +211,7 @@ impl Plugin for ConsolePlugin {
                         (
                             crate::user_settings::native_menu_settings,
                             crate::user_settings::consume_menu_binding,
+                            crate::folder_browser::route,
                             crate::game_folders::game_folder_menu,
                         )
                             .chain(),
@@ -793,6 +794,7 @@ fn setup_console(
     crate::frontend::register(&mut registry);
     crate::class_menu::register(&mut registry);
     crate::barracks_menu::register(&mut registry);
+    crate::folder_browser::register(&mut registry);
     let font = fonts.add(Font::from_bytes(EMBEDDED_FONT.to_vec()));
     commands.insert_resource(ConsoleFont(font.clone()));
 

@@ -55,7 +55,7 @@ pub fn stored_game_folders(artifacts: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-fn zone_game(game: OtherGame) -> asset_transport::ZoneGame {
+pub(crate) fn zone_game(game: OtherGame) -> asset_transport::ZoneGame {
     match game {
         OtherGame::BlackOps => asset_transport::ZoneGame::T5,
         OtherGame::BlackOps2 => asset_transport::ZoneGame::T6,
@@ -82,9 +82,13 @@ impl Default for FolderPicks {
 }
 
 impl FolderPicks {
+    pub(crate) fn deliver(&self, game: OtherGame, folder: PathBuf) {
+        let _ = self.sender.send((game, folder));
+    }
+
     fn open_dialog(&self, game: OtherGame, start: Option<PathBuf>) {
         if cfg!(target_os = "android") {
-            warn!("folder picker is unavailable on Android; set game folders in settings");
+            warn!("system folder dialog is unavailable on Android; use the in-game browser");
             return;
         }
         if self.dialog_open.swap(true, Ordering::AcqRel) {
@@ -117,13 +121,13 @@ fn pick_folder(game: OtherGame, start: Option<PathBuf>) -> Option<PathBuf> {
     dialog.pick_folder()
 }
 
-// rfd has no Android backend; `open_dialog` returns before reaching this.
+// rfd has no Android backend; there the menu opens `folder_browser` instead.
 #[cfg(target_os = "android")]
 fn pick_folder(_game: OtherGame, _start: Option<PathBuf>) -> Option<PathBuf> {
     None
 }
 
-fn tail(text: &str, chars: usize) -> String {
+pub(crate) fn tail(text: &str, chars: usize) -> String {
     let count = text.chars().count();
     if count <= chars {
         return text.to_owned();

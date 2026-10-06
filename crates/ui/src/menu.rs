@@ -63,6 +63,7 @@ pub fn install_frontend_menus(catalog: &mut asset_game::MenuCatalog) -> Result<(
     catalog.load_definitions(include_str!("../menus/settings.json"))?;
     catalog.load_definitions(include_str!("../menus/controller.json"))?;
     catalog.load_definitions(include_str!("../menus/game_folders.json"))?;
+    catalog.load_definitions(include_str!("../menus/game_folder_browser.json"))?;
     let slider = catalog
         .get("pc_options_video")
         .and_then(|menu| {
@@ -106,6 +107,21 @@ pub fn install_frontend_menus(catalog: &mut asset_game::MenuCatalog) -> Result<(
                         "play mouse_click; close self; exec \"disconnect\";".into(),
                     )];
                 }
+            }
+        }
+        // rfd has no Android backend: Browse opens the in-game folder browser.
+        if cfg!(target_os = "android") && name == "options_game_folders" {
+            for item in &mut menu.items {
+                let Some(key) = item
+                    .name
+                    .strip_prefix("game_folder_")
+                    .and_then(|rest| rest.strip_suffix("_browse"))
+                else {
+                    continue;
+                };
+                item.handlers.action = vec![asset_game::MenuEvent::Script(format!(
+                    "play mouse_click; exec \"ui_folders_open {key}\"; open options_game_folder_browser;"
+                ))];
             }
         }
         if let Some(settings_link) = menu

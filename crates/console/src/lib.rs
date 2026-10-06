@@ -23,6 +23,7 @@ mod debug_vision;
 mod diagnostics;
 pub mod editor;
 mod feature_dispatch;
+mod folder_browser;
 mod frontend;
 mod game_folders;
 mod gamepad;
