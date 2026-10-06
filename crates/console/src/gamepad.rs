@@ -1,4 +1,5 @@
 use bevy::input::gamepad::{Gamepad, GamepadAxis, GamepadButton, GamepadConnection, GamepadEvent};
+use bevy::input::touch::{TouchInput, TouchPhase};
 use bevy::prelude::*;
 use frame::{UiMenuKey, UiMenuRequest};
 
@@ -249,5 +250,59 @@ pub(crate) fn drive_menus_with_pad(
     };
     if fire && let Some(key) = direction {
         requests.write(UiMenuRequest::Key(key));
+    }
+}
+
+pub(crate) fn drive_menus_with_touch(
+    mut touches: MessageReader<TouchInput>,
+    devices: Res<frame::InputDevices>,
+    console: Res<crate::ConsoleState>,
+    capture: Res<frame::UiBindingCapture>,
+    script_menus: Option<Res<hud::ScriptMenus>>,
+    mut requests: MessageWriter<UiMenuRequest>,
+    mut starts: Local<std::collections::HashMap<u64, (Vec2, f32)>>,
+    time: Res<Time>,
+) {
+    let live = devices.focused
+        && !console.open
+        && capture.command.is_none()
+        && script_menus.is_some_and(|menus| menus.captures_input());
+    if !live {
+        touches.clear();
+        starts.clear();
+        return;
+    }
+    let now = time.elapsed_secs();
+    for touch in touches.read() {
+        match touch.phase {
+            TouchPhase::Started => {
+                starts.insert(touch.id, (touch.position, now));
+            }
+            TouchPhase::Moved => {}
+            TouchPhase::Ended | TouchPhase::Canceled => {
+                let Some((start, at)) = starts.remove(&touch.id) else {
+                    continue;
+                };
+                if touch.phase == TouchPhase::Canceled {
+                    continue;
+                }
+                let delta = touch.position - start;
+                if delta.length() < 24.0 && now - at < 0.6 {
+                    requests.write(UiMenuRequest::Key(UiMenuKey::Enter));
+                } else if delta.length() >= 40.0 {
+                    requests.write(UiMenuRequest::Key(if delta.x.abs() > delta.y.abs() {
+                        if delta.x > 0.0 {
+                            UiMenuKey::Right
+                        } else {
+                            UiMenuKey::Left
+                        }
+                    } else if delta.y > 0.0 {
+                        UiMenuKey::Down
+                    } else {
+                        UiMenuKey::Up
+                    }));
+                }
+            }
+        }
     }
 }

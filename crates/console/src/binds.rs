@@ -265,6 +265,20 @@ pub struct BindInputs<'a> {
     pub pad: Option<&'a Gamepad>,
 }
 
+/// Half-pulled triggers still fire: digital `pressed` cuts in near full pull,
+/// so treat the analog value as held past this point. Release is handled by
+/// the same `pressed` check, so no separate analog release path exists.
+pub(crate) const TRIGGER_ANALOG_THRESHOLD: f32 = 0.3;
+
+pub(crate) fn trigger_analog_pressed(pad: &Gamepad, button: PadButton) -> bool {
+    match button {
+        PadButton::LeftTrigger | PadButton::RightTrigger => pad
+            .get(button.gamepad_button())
+            .is_some_and(|value| value >= TRIGGER_ANALOG_THRESHOLD),
+        _ => false,
+    }
+}
+
 impl<'a> BindInputs<'a> {
     pub fn new(keys: &'a ButtonInput<KeyCode>, mouse: &'a ButtonInput<MouseButton>) -> Self {
         Self {
@@ -284,9 +298,9 @@ impl<'a> BindInputs<'a> {
             BindButton::Key(key) => self.keys.pressed(key),
             BindButton::Mouse(btn) => self.mouse.pressed(btn),
             BindButton::WheelUp | BindButton::WheelDown => false,
-            BindButton::Pad(btn) => self
-                .pad
-                .is_some_and(|pad| pad.pressed(btn.gamepad_button())),
+            BindButton::Pad(btn) => self.pad.is_some_and(|pad| {
+                pad.pressed(btn.gamepad_button()) || trigger_analog_pressed(pad, btn)
+            }),
         }
     }
 

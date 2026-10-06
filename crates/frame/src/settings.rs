@@ -176,6 +176,7 @@ impl GameSettings {
         }
         self.pad_stick_layout = self.pad_stick_layout.min(3);
         self.pad_curve = self.pad_curve.min(2);
+        // Aim assist stays off: lock-on and auto-aim would aim for the player.
         self.pad_aim_assist = 0;
         self.pad_prompts = self.pad_prompts.min(3);
         let finite = |v: f32, lo: f32, hi: f32, default: f32| {

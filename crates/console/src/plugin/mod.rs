@@ -118,6 +118,7 @@ impl Plugin for ConsolePlugin {
                 (
                     crate::gamepad::track_active_pad,
                     crate::gamepad::drive_menus_with_pad,
+                    crate::gamepad::drive_menus_with_touch,
                 )
                     .chain()
                     .after(InputSystems)
@@ -474,6 +475,30 @@ fn publish_client_action_input(
                 key_event(&mut out.client, key_num, false, now, frame);
             }
         }
+        if let Some(pad) = pad {
+            for trigger in [
+                crate::PadButton::LeftTrigger,
+                crate::PadButton::RightTrigger,
+            ] {
+                let button = BindButton::Pad(trigger);
+                if physical.blocked.contains(&button) {
+                    continue;
+                }
+                if binds.get(button).is_none() {
+                    continue;
+                }
+                let key_num = host_keynum(button);
+                if key_num >= input_iw4::KEY_COUNT || out.client.keys[key_num].down != 0 {
+                    continue;
+                }
+                if pad
+                    .get(trigger.gamepad_button())
+                    .is_some_and(|value| value >= crate::binds::TRIGGER_ANALOG_THRESHOLD)
+                {
+                    key_event(&mut out.client, key_num, true, now, frame);
+                }
+            }
+        }
         for event in wheel.read() {
             let steps = wheel_detents(event.unit, event.y, &mut wheel_carry);
             let button = if steps > 0 {
@@ -613,7 +638,7 @@ fn sync_cursor_grab(
     let Ok(mut cursor) = windows.single_mut() else {
         return;
     };
-    let want = if grab {
+    let want = if grab && cfg!(not(target_os = "android")) {
         CursorGrabMode::Locked
     } else {
         CursorGrabMode::None

@@ -44,6 +44,9 @@ pub enum SteamCandidate {
 }
 
 pub fn link_steam_games(root: &GamesRoot) -> SteamProbe {
+    if cfg!(target_os = "android") {
+        return SteamProbe::default();
+    }
     let mut probe = SteamProbe::default();
     let roots = configured_search_roots(&root.0);
     let missing = TITLES

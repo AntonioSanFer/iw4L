@@ -105,7 +105,7 @@ fn link_latest(path: &Path) -> Option<PathBuf> {
         return None;
     }
     let link = dir.join(LATEST_LOG_NAME);
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "android")))]
     {
         match std::fs::symlink_metadata(&link) {
             Ok(md) if md.is_symlink() => std::fs::remove_file(&link).ok()?,
@@ -113,6 +113,19 @@ fn link_latest(path: &Path) -> Option<PathBuf> {
             Err(_) => {}
         }
         std::os::unix::fs::symlink(name, &link).ok()?;
+        Some(link)
+    }
+    #[cfg(target_os = "android")]
+    {
+        match std::fs::symlink_metadata(&link) {
+            Ok(md) if md.is_symlink() => std::fs::remove_file(&link).ok()?,
+            Ok(_) => return None,
+            Err(_) => {}
+        }
+        if std::os::unix::fs::symlink(name, &link).is_err() {
+            let _ = std::fs::remove_file(&link);
+            std::fs::copy(path, &link).ok()?;
+        }
         Some(link)
     }
     #[cfg(not(unix))]

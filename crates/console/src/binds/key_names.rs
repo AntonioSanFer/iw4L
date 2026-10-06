@@ -48,6 +48,7 @@ macro_rules! key_catalog {
             "DPAD_LEFT",
             "DPAD_RIGHT",
             "BUTTON_BACK",
+            "BUTTON_START",
         ];
 
         pub fn host_keynum(button: BindButton) -> usize {

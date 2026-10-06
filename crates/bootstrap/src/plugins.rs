@@ -98,12 +98,7 @@ pub fn default_plugins_with_quiet_log(mut window: WindowPlugin) -> bevy::app::Pl
         primary.desired_maximum_frame_latency = core::num::NonZeroU32::new(frame_latency());
     }
     let mut wgpu = WgpuSettings::default();
-    wgpu.features |= WgpuFeatures::TEXTURE_FORMAT_16BIT_NORM
-        | WgpuFeatures::TEXTURE_COMPRESSION_BC
-        | WgpuFeatures::POLYGON_MODE_LINE
-        | WgpuFeatures::TEXTURE_BINDING_ARRAY
-        | WgpuFeatures::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
-        | WgpuFeatures::PARTIALLY_BOUND_BINDING_ARRAY;
+    wgpu.features |= extra_wgpu_features();
     let plugins = DefaultPlugins
         .set(window)
         .set(LogPlugin {
@@ -119,6 +114,22 @@ pub fn default_plugins_with_quiet_log(mut window: WindowPlugin) -> bevy::app::Pl
         plugins
     } else {
         plugins.disable::<PipelinedRenderingPlugin>()
+    }
+}
+
+fn extra_wgpu_features() -> WgpuFeatures {
+    #[cfg(target_os = "android")]
+    {
+        WgpuFeatures::empty()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        WgpuFeatures::TEXTURE_FORMAT_16BIT_NORM
+            | WgpuFeatures::TEXTURE_COMPRESSION_BC
+            | WgpuFeatures::POLYGON_MODE_LINE
+            | WgpuFeatures::TEXTURE_BINDING_ARRAY
+            | WgpuFeatures::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
+            | WgpuFeatures::PARTIALLY_BOUND_BINDING_ARRAY
     }
 }
 

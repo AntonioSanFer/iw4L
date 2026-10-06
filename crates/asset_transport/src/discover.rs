@@ -47,14 +47,29 @@ pub fn load_dotenv() {
 
 pub fn games_root_from_env() -> Result<GamesRoot, String> {
     load_dotenv();
-    let path = match std::env::var_os("IW4L_GAMES") {
-        Some(raw) => PathBuf::from(raw),
-        None => default_games_root()?,
-    };
+    if let Some(raw) = std::env::var_os("IW4L_GAMES") {
+        let path = PathBuf::from(raw);
+        if !path.is_dir() {
+            return Err(format!("IW4L_GAMES is not a directory: {}", path.display()));
+        }
+        return Ok(GamesRoot(path));
+    }
+    if let Some(path) = sdcard_games_root() {
+        return Ok(GamesRoot(path));
+    }
+    let path = default_games_root()?;
     if !path.is_dir() {
         return Err(format!("IW4L_GAMES is not a directory: {}", path.display()));
     }
     Ok(GamesRoot(path))
+}
+
+fn sdcard_games_root() -> Option<PathBuf> {
+    if !cfg!(target_os = "android") {
+        return None;
+    }
+    let path = PathBuf::from(std::env::var_os("ANDROID_SDCARD_GAMES")?);
+    path.is_dir().then_some(path)
 }
 
 #[cfg(windows)]
@@ -67,9 +82,16 @@ fn default_games_root() -> Result<PathBuf, String> {
         })
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(target_os = "android")))]
 fn default_games_root() -> Result<PathBuf, String> {
     Err("IW4L_GAMES is not set — copy .env.example to .env and set the games root".to_owned())
+}
+
+#[cfg(target_os = "android")]
+fn default_games_root() -> Result<PathBuf, String> {
+    let dir = android_app_dir().join("games");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    Ok(dir)
 }
 
 const SIBLING_TITLES: [&str; 3] = [
@@ -133,10 +155,12 @@ pub fn search_roots(root: &Path) -> Vec<PathBuf> {
     let roots = configured_search_roots(root);
     #[cfg(not(windows))]
     let mut roots = roots;
-    #[cfg(not(windows))]
-    for installed in crate::steam::installed_game_roots(&roots) {
-        if !roots.contains(&installed) {
-            roots.push(installed);
+    if !cfg!(target_os = "android") {
+        #[cfg(not(windows))]
+        for installed in crate::steam::installed_game_roots(&roots) {
+            if !roots.contains(&installed) {
+                roots.push(installed);
+            }
         }
     }
     roots
@@ -152,6 +176,11 @@ pub(crate) fn configured_search_roots(root: &Path) -> Vec<PathBuf> {
         if !roots.contains(folder) {
             roots.push(folder.clone());
         }
+    }
+    if let Some(sdcard) = sdcard_games_root()
+        && !roots.contains(&sdcard)
+    {
+        roots.push(sdcard);
     }
     if let Some(library) = root.parent() {
         for title in SIBLING_TITLES {
@@ -775,12 +804,34 @@ fn map_pack_folder(zone_ff: &Path) -> String {
         .unwrap_or_else(|| "BASE".to_owned())
 }
 
-pub fn ensure_artifacts_dir() -> Result<PathBuf, String> {
-    let dir = std::env::var_os("IW4L_ARTIFACTS_DIR")
+#[cfg(target_os = "android")]
+pub fn android_app_dir() -> PathBuf {
+    std::env::var_os("ANDROID_PRIVATE")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("iw4l-artifacts"));
-    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-    Ok(dir)
+        .unwrap_or_else(|| PathBuf::from("/data/data/com.iw4l/files"))
+}
+
+pub fn ensure_artifacts_dir() -> Result<PathBuf, String> {
+    if let Some(dir) = std::env::var_os("IW4L_ARTIFACTS_DIR") {
+        let dir = PathBuf::from(dir);
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        return Ok(dir);
+    }
+    #[cfg(target_os = "android")]
+    {
+        let dir = android_app_dir().join("iw4l-artifacts");
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        return Ok(dir);
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let dir = PathBuf::from("iw4l-artifacts");
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        Ok(dir)
+    }
 }
 
 /// T5 language archives carry a language prefix rather than `localized_`.

@@ -9,6 +9,11 @@ description = "The binary. Process entry only: allocator, argv, env, log init; a
 name = "iw4l"
 path = "src/main.rs"
 
+[lib]
+name = "iw4l"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
 [features]
 bevy-debug = ["bootstrap/bevy-debug"]
 bevy-trace = ["bootstrap/bevy-trace"]
@@ -19,5 +24,16 @@ diag.workspace = true
 asset_transport.workspace = true
 bootstrap = { path = "../bootstrap" }
 
+[target.'cfg(target_os = "android")'.dependencies]
+bevy = { workspace = true, features = ["android-native-activity"] }
+
 [lints]
 workspace = true
+
+[package.metadata.android]
+package = "com.iw4l"
+build_targets = ["aarch64-linux-android"]
+
+[package.metadata.android.sdk]
+min_sdk_version = 29
+target_sdk_version = 33

@@ -342,6 +342,11 @@ fn run_menu(
             primary_window: Some(Window {
                 title: "iw4l".into(),
                 resolution: (1280, 720).into(),
+                present_mode: if cfg!(target_os = "android") {
+                    PresentMode::Fifo
+                } else {
+                    Window::default().present_mode
+                },
                 ..default()
             }),
             ..default()
@@ -698,6 +703,9 @@ const fn role_name(role: Role) -> &'static str {
 }
 
 fn launch_present_mode(acceptance: bool) -> PresentMode {
+    if cfg!(target_os = "android") {
+        return PresentMode::Fifo;
+    }
     if acceptance {
         return ACCEPTANCE_PRESENT_MODE;
     }

@@ -277,6 +277,9 @@ pub(crate) fn settings_path(artifacts: &std::path::Path) -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("IW4L_SETTINGS_PATH") {
         return Some(PathBuf::from(path));
     }
+    if cfg!(target_os = "android") {
+        return Some(artifacts.join("settings.cfg"));
+    }
     if cfg!(windows) {
         return Some(artifacts.join("settings.cfg"));
     }

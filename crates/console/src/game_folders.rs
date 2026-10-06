@@ -83,6 +83,10 @@ impl Default for FolderPicks {
 
 impl FolderPicks {
     fn open_dialog(&self, game: OtherGame, start: Option<PathBuf>) {
+        if cfg!(target_os = "android") {
+            warn!("folder picker is unavailable on Android; set game folders in settings");
+            return;
+        }
         if self.dialog_open.swap(true, Ordering::AcqRel) {
             return;
         }
@@ -161,6 +165,35 @@ pub(crate) fn game_folder_menu(
                 for game in OtherGame::ALL {
                     settings.set_game_folder(game, String::new());
                 }
+                settings.touch();
+            }
+            "ui_set_game_folder" => {
+                // `set ui_set_game_folder <key>=<path>` or `set ui_set_game_folder <key> <path>`.
+                let (key, path) = match value.split_once('=') {
+                    Some((key, first)) => {
+                        let mut path = first.to_owned();
+                        for extra in &command.args[2..] {
+                            path.push(' ');
+                            path.push_str(extra);
+                        }
+                        (key, path)
+                    }
+                    None => (value.as_str(), command.args[2..].join(" ")),
+                };
+                let Some(game) = OtherGame::from_key(key.trim()) else {
+                    warn!("unknown game folder key `{}`", key.trim());
+                    continue;
+                };
+                let folder = PathBuf::from(path.trim());
+                if !folder.is_dir() {
+                    warn!("not a directory: {}", folder.display());
+                    continue;
+                }
+                let root = asset_transport::game_install_root(&folder);
+                if !asset_transport::folder_holds_game(&root, zone_game(game)) {
+                    warn!("{} holds no {} content", root.display(), game.title());
+                }
+                settings.set_game_folder(game, root.display().to_string());
                 settings.touch();
             }
             _ => {}

@@ -45,6 +45,9 @@ perf.workspace = true
 sha2.workspace = true
 serde_json.workspace = true
 
+[target.'cfg(not(target_os = "android"))'.dependencies]
+bevy = { workspace = true, features = ["system_clipboard"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 
