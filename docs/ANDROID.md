@@ -40,6 +40,11 @@ Bevy's `android-native-activity` feature is enabled for the android target only.
 Present mode is forced to `Fifo`; `IW4L_PRESENT_MODE` is ignored.
 Only base wgpu features are requested; desktop extras (BC, wireframe, bindless,
 16-bit norm) are skipped, and use sites must check `device.features()` first.
+Mobile GPUs cannot sample BC (DXT), so `asset_material` expands BC textures to
+RGBA8 before upload (`device_texels`). To stay within a phone's memory, archive
+textures drop top mips until their largest side is at most 256 px
+(`EXPANDED_MAX_SIDE`). At 512 px, mp_abandon was killed at about 7 GB on an
+8 GB phone. Most of what remains is CPU-side loader data, not textures.
 
 ## Game files on SD card
 
