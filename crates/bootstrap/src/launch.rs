@@ -289,10 +289,11 @@ fn run_menu(
     });
     let shell_common = assets::load_pool().spawn(assets::load_shell_common(games.clone()));
     let (mut menus, menu_report) = load_ui_menu_catalog(&ui_games);
-    ui::install_frontend_menus(&mut menus).unwrap_or_else(|error| fatal(&error));
     for line in &menu_report {
         diag::info!(Launch, "{line}");
     }
+    ui::install_frontend_menus(&mut menus)
+        .unwrap_or_else(|error| fatal(&format!("{error}\n\n{}", menu_report.join("\n"))));
     let missing = ["main", "main_text"]
         .into_iter()
         .filter(|name| menus.get(name).is_none())
@@ -527,10 +528,11 @@ fn run_map(
     };
     start_perf(Some(zone.clone()), role_name(config.role));
     let (mut menus, menu_report) = load_ui_menu_catalog(&games);
-    ui::install_frontend_menus(&mut menus).unwrap_or_else(|error| fatal(&error));
     for line in &menu_report {
         diag::info!(Launch, "{line}");
     }
+    ui::install_frontend_menus(&mut menus)
+        .unwrap_or_else(|error| fatal(&format!("{error}\n\n{}", menu_report.join("\n"))));
     let progress = LoadProgress::default();
     let acceptance_run = acceptance
         .map(|a| AcceptanceRun {
