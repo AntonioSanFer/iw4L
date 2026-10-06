@@ -4,16 +4,25 @@ Minimal scaffolding: the menu boots on device. In-match play is not vetted.
 
 ## Build
 
-Install the NDK (r25+, via `ANDROID_NDK_ROOT`), then:
+Install the SDK (platform 33, build-tools) and NDK, set `ANDROID_HOME` and
+`ANDROID_NDK_ROOT`, then:
 
 ```sh
 rustup target add aarch64-linux-android
-cargo install xbuild # or cargo-apk (deprecated upstream)
-xbuild run -p launcher # or: cargo apk run -p launcher
+cargo install cargo-apk
+cargo apk build -p launcher --lib --release   # target/release/apk/iw4l.apk
+cargo apk run -p launcher --lib --release     # build, install, launch over adb
 ```
 
-The cdylib is `libiw4l.so` (`crates/launcher`, `android.app.lib_name=iw4l`);
-the manifest is `crates/launcher/AndroidManifest.xml` (landscape).
+cargo-apk sets the NDK compilers itself; a bare `cargo check --target
+aarch64-linux-android` needs `CC_`/`CXX_`/`AR_aarch64_linux_android` pointing
+at the NDK's `aarch64-linux-android29-clang(++).cmd` and `llvm-ar.exe`.
+xbuild does not fit: it ignores the lib name and `[package.metadata.android]`.
+
+The cdylib is `libiw4l.so` (`crates/launcher`, `android.app.lib_name=iw4l`).
+cargo-apk builds the manifest from `[package.metadata.android]` in
+`crates/launcher/Cargo.toml` (landscape, permissions);
+`crates/launcher/AndroidManifest.xml` mirrors it for other packagers.
 Bevy's `android-native-activity` feature is enabled for the android target only.
 
 ## On-device paths (`$ANDROID_PRIVATE`, else `/data/data/com.iw4l/files`)
