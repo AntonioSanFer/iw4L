@@ -3452,6 +3452,7 @@ dependencies = [
  "movement_iw4",
  "net",
  "playerstate_iw4",
+ "render_material",
  "sim",
  "weapon_iw4",
 ]
@@ -6801,6 +6802,7 @@ dependencies = [
  "net",
  "session",
  "sim",
+ "updater",
 ]
 
 [[package]]
