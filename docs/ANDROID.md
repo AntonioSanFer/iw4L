@@ -14,6 +14,10 @@ cargo apk build -p launcher --lib --release   # target/release/apk/iw4l.apk
 cargo apk run -p launcher --lib --release     # build, install, launch over adb
 ```
 
+`--release` needs a keystore; for sideloading the SDK debug key does:
+`CARGO_APK_RELEASE_KEYSTORE=~/.android/debug.keystore` and
+`CARGO_APK_RELEASE_KEYSTORE_PASSWORD=android`.
+
 cargo-apk sets the NDK compilers itself; a bare `cargo check --target
 aarch64-linux-android` needs `CC_`/`CXX_`/`AR_aarch64_linux_android` pointing
 at the NDK's `aarch64-linux-android29-clang(++).cmd` and `llvm-ar.exe`.
