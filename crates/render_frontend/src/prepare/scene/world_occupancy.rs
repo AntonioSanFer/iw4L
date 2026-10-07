@@ -1,3 +1,4 @@
+use bevy::camera::visibility::NoCpuCulling;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureUsages;
@@ -106,6 +107,9 @@ pub fn place(
                 .spawn((
                     instance.transform,
                     Visibility::Hidden,
+                    // DPVS culls world models; Bevy's frustum pass would walk
+                    // every one of them again for each camera.
+                    NoCpuCulling,
                     crate::prepare::scene::cull::StaticModelEntity,
                 ))
                 .id();
@@ -199,6 +203,7 @@ pub fn place(
         let mut entity = commands.spawn((
             transform,
             visibility,
+            NoCpuCulling,
             crate::prepare::scene::cull::ScriptModelEntity,
             instance,
         ));
@@ -231,6 +236,7 @@ pub fn place(
         commands.spawn((
             transform,
             Visibility::Inherited,
+            NoCpuCulling,
             crate::prepare::scene::cull::DynEntModelEntity,
             instance,
         ));
