@@ -10,6 +10,13 @@ const ARG_WORDS: usize = 5;
 ///
 /// Read once, through the same rule as every other switch a paired run is
 /// alternated across: `IW4L_MULTI_DRAW=0` turns it off.
+///
+/// TODO(check multi-draw on Android): on a Mali-G615 phone (Dimensity 7300,
+/// 2026-10-07) the path was `capable` and, forced on, left the render thread
+/// at 29-33 ms p50 on mp_abandon, the same as without it, though wgpu's
+/// `encode_render_pass` was 38% of that thread. Unchecked: how many draws
+/// `ExactIndirectDraws` actually folds there (`folded` vs `batches`), and
+/// whether runs break on per-draw state so nothing merges.
 pub(super) fn multi_draw_requested() -> bool {
     static REQUESTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *REQUESTED.get_or_init(|| perf::switch("IW4L_MULTI_DRAW"))
