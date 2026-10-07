@@ -179,15 +179,17 @@ fn place_waypoint(
     } else {
         world
     };
-    let pos = camera.world_to_viewport(transform, mirrored).ok()?;
+    let pos = surface.project(camera, transform, mirrored)?;
     let onscreen = depth > 0.0 && (0.0..=w).contains(&pos.x) && (0.0..=h).contains(&pos.y);
     if !constant {
         if !onscreen {
             return None;
         }
-        let edge = camera
-            .world_to_viewport(transform, world + *transform.right() * elem.width as f32)
-            .ok()?;
+        let edge = surface.project(
+            camera,
+            transform,
+            world + *transform.right() * elem.width as f32,
+        )?;
         return Some((pos, (edge - pos).length()));
     }
     let size = WAYPOINT_ICON_SIZE * scale;

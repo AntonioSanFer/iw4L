@@ -53,6 +53,29 @@ and there is no resident map or kept first-person texels, so a second load walks
 deltas; once the phone swaps, resident bytes alone undercount. The heap figure
 needs `IW4L_COUNTING_ALLOC`.
 
+## Frame rate
+
+Phones default to lighter graphics (`frame::GameSettings`):
+
+| Setting (`settings.cfg`) | Phone | Desktop | Override |
+| --- | --- | --- | --- |
+| `render_scale` | 0.667 | 1.0 | `IW4L_RENDER_SCALE` |
+| `max_fps` | 30 | 0 (vsync only) | `IW4L_MAX_FPS` |
+| `shadows`, `depth_of_field`, `bloom` | off | on | menu, `sm_enable`, `r_dof_enable`, `r_glow` |
+
+Below 1.0 the lens renders into an image that a camera under the HUD stretches
+over the window (`bootstrap::render_scale`); the HUD stays at full resolution
+and projects through `Hud2dSurface::project`. `max_fps` sleeps the main world to
+a fixed grid (`bootstrap::frame_pacing`): on a 60 Hz `Fifo` panel a frame time
+near 16.7 ms would otherwise flip between 60 and 30. Settings files older than
+v3 keep the phone's graphics defaults instead of the desktop ones they were
+written with. `shadows` gates sun shadows as well as spot shadows.
+
+Every 5 s the log has a `frames:` line: `p50/p95/p99/max` of the frame interval,
+main-world `update`, render-world `render` (without `acquire`) and the
+swapchain `acquire` wait, which grows when the GPU or vsync is the limit.
+`IW4L_FRAME_LOG=1` turns it on off Android.
+
 ## Game files on SD card
 
 Game installs (folders with a `zone/` subfolder) up to three folders deep on

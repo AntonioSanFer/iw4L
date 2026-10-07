@@ -31,6 +31,9 @@ fn spawn_overlay_ui_camera(commands: &mut Commands) {
             clear_color: ClearColorConfig::Custom(Color::NONE),
             ..default()
         },
+        // Bevy's default is 4x; UI needs none, and a camera whose MSAA differs
+        // from the others on the window gets its own full-size main texture.
+        bevy::render::view::Msaa::Off,
         crate::UiCamera,
         OverlayUiCamera,
     ));
@@ -165,6 +168,7 @@ pub(crate) fn spawn_loading_screen(
             clear_color: ClearColorConfig::Custom(LOADING_CLEAR),
             ..default()
         },
+        bevy::render::view::Msaa::Off,
         crate::UiCamera,
         LoadingCamera,
     ));

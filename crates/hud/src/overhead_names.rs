@@ -326,7 +326,7 @@ fn update_overhead_names(
             continue;
         }
         let anchor = head + Vec3::Z * OVERHEAD_HEAD_LIFT;
-        let Ok(pixel) = camera.world_to_viewport(transform, anchor) else {
+        let Some(pixel) = surface.project(camera, transform, anchor) else {
             continue;
         };
         if !pixel.is_finite()
@@ -567,9 +567,9 @@ fn thermal_target_quads(
         };
         let origin = Vec3::from_array(runtime.origin);
         let top = origin + Vec3::Z * 60.0;
-        let (Ok(base), Ok(head)) = (
-            camera.world_to_viewport(transform, origin),
-            camera.world_to_viewport(transform, top),
+        let (Some(base), Some(head)) = (
+            surface.project(camera, transform, origin),
+            surface.project(camera, transform, top),
         ) else {
             continue;
         };
@@ -646,9 +646,9 @@ fn vehicle_target_quads(
             continue;
         }
         let origin = Vec3::from_array(runtime.origin);
-        let (Ok(a), Ok(b)) = (
-            camera.world_to_viewport(transform, origin + Vec3::new(-60.0, -60.0, -160.0)),
-            camera.world_to_viewport(transform, origin + Vec3::new(60.0, 60.0, -40.0)),
+        let (Some(a), Some(b)) = (
+            surface.project(camera, transform, origin + Vec3::new(-60.0, -60.0, -160.0)),
+            surface.project(camera, transform, origin + Vec3::new(60.0, 60.0, -40.0)),
         ) else {
             continue;
         };

@@ -58,6 +58,10 @@ impl OtherGame {
     }
 }
 
+/// Phones get lighter graphics defaults: a mid-range GPU drawing a 2400x1080
+/// panel cannot hold 30 fps with every effect on at full resolution.
+const PHONE: bool = cfg!(target_os = "android");
+
 #[derive(Resource, Clone, Debug, PartialEq)]
 pub struct GameSettings {
     pub resolution: DisplayResolution,
@@ -70,6 +74,11 @@ pub struct GameSettings {
     pub shadows: bool,
     pub depth_of_field: bool,
     pub bloom: bool,
+    /// Fraction of the window's pixels the 3D view is drawn at, per side; the
+    /// HUD stays at full resolution. 1.0 draws straight to the window.
+    pub render_scale: f32,
+    /// Frames per second the app is paced to; 0 leaves it to vsync.
+    pub max_fps: u32,
     pub sensitivity: f32,
     pub invert_mouse: bool,
     pub player_name: String,
@@ -102,9 +111,11 @@ impl Default for GameSettings {
             third_person: false,
             master_volume: 1.0,
             brightness: 0.0,
-            shadows: true,
-            depth_of_field: true,
-            bloom: true,
+            shadows: !PHONE,
+            depth_of_field: !PHONE,
+            bloom: !PHONE,
+            render_scale: if PHONE { Self::PHONE_RENDER_SCALE } else { 1.0 },
+            max_fps: if PHONE { Self::PHONE_MAX_FPS } else { 0 },
             sensitivity: 5.0,
             invert_mouse: false,
             player_name: "Player".to_owned(),
@@ -128,6 +139,10 @@ impl Default for GameSettings {
 }
 
 impl GameSettings {
+    /// 2400x1080 becomes 1600x720.
+    pub const PHONE_RENDER_SCALE: f32 = 2.0 / 3.0;
+    pub const PHONE_MAX_FPS: u32 = 30;
+    pub const RENDER_SCALE_MIN: f32 = 0.25;
     pub const FOV_DEFAULT: f32 = 65.0;
     pub const FOV_MIN: f32 = 65.0;
     pub const FOV_MAX: f32 = 120.0;
@@ -170,6 +185,14 @@ impl GameSettings {
             0.0
         };
         self.master_volume = self.master_volume.clamp(0.0, 1.0);
+        self.render_scale = if self.render_scale.is_finite() {
+            self.render_scale.clamp(Self::RENDER_SCALE_MIN, 1.0)
+        } else {
+            1.0
+        };
+        if self.max_fps != 0 {
+            self.max_fps = self.max_fps.clamp(10, 1000);
+        }
         self.sensitivity = self.sensitivity.clamp(0.1, 30.0);
         if self.pad_layout != Self::PAD_LAYOUT_CUSTOM {
             self.pad_layout = self.pad_layout.min(4);

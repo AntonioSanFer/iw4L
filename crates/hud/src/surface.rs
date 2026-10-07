@@ -62,6 +62,24 @@ impl Hud2dSurface {
     pub fn placement(&self) -> &ScreenPlacement {
         &self.place
     }
+
+    /// Where `world` lands on this surface. The 3D view can be drawn smaller
+    /// than the window (`render_scale`), so its viewport pixels are scaled to
+    /// the HUD's.
+    pub fn project(
+        &self,
+        camera: &Camera,
+        transform: &GlobalTransform,
+        world: Vec3,
+    ) -> Option<Vec2> {
+        let pixel = camera.world_to_viewport(transform, world).ok()?;
+        let width = camera.logical_viewport_size()?.x;
+        Some(if width > 0.0 {
+            pixel * (self.width / width)
+        } else {
+            pixel
+        })
+    }
 }
 
 pub(crate) fn update_hud_surface(

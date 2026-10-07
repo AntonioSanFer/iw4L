@@ -314,7 +314,7 @@ fn parse_into<T: std::str::FromStr>(value: &str, slot: &mut T) {
 fn serialize_settings(settings: &frame::GameSettings, binds: &KeyBinds) -> String {
     let safe_name = settings.player_name.replace(['\n', '\r', '='], " ");
     let mut lines = vec![
-        "// IW4L user settings v2".to_owned(),
+        SETTINGS_HEADER.to_owned(),
         format!(
             "resolution={}x{}",
             settings.resolution.width, settings.resolution.height
@@ -328,6 +328,8 @@ fn serialize_settings(settings: &frame::GameSettings, binds: &KeyBinds) -> Strin
         format!("shadows={}", settings.shadows),
         format!("depth_of_field={}", settings.depth_of_field),
         format!("bloom={}", settings.bloom),
+        format!("render_scale={:.3}", settings.render_scale),
+        format!("max_fps={}", settings.max_fps),
         format!("sensitivity={:.3}", settings.sensitivity),
         format!("invert_mouse={}", settings.invert_mouse),
         format!("player_name={safe_name}"),
@@ -355,7 +357,13 @@ fn serialize_settings(settings: &frame::GameSettings, binds: &KeyBinds) -> Strin
     lines.join("\n")
 }
 
+/// v3 added `render_scale` and `max_fps`. Files from before it were written
+/// with desktop graphics defaults, so a phone keeps its own for those keys.
+const SETTINGS_HEADER: &str = "// IW4L user settings v3";
+
 fn parse_settings(source: &str, settings: &mut frame::GameSettings, binds: &mut KeyBinds) {
+    let phone_upgrade =
+        cfg!(target_os = "android") && source.lines().next() != Some(SETTINGS_HEADER);
     let mut bind_script = String::new();
     for raw in source.lines() {
         let line = raw.trim();
@@ -371,6 +379,9 @@ fn parse_settings(source: &str, settings: &mut frame::GameSettings, binds: &mut 
             warn!("ignored malformed setting line: {line}");
             continue;
         };
+        if phone_upgrade && matches!(key, "shadows" | "depth_of_field" | "bloom") {
+            continue;
+        }
         match key {
             "resolution" => {
                 if let Some((w, h)) = value.split_once('x')
@@ -415,6 +426,8 @@ fn parse_settings(source: &str, settings: &mut frame::GameSettings, binds: &mut 
                     settings.bloom = v;
                 }
             }
+            "render_scale" => parse_into(value, &mut settings.render_scale),
+            "max_fps" => parse_into(value, &mut settings.max_fps),
             "master_volume" => {
                 if let Ok(value) = value.parse() {
                     settings.master_volume = value;

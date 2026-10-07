@@ -46,6 +46,12 @@ pub fn add_runtime_plugins_with_role(app: &mut App, role: RuntimeRole) {
         .add_plugins(ReplayPlugin)
         .add_plugins(RenderPlugin)
         .add_plugins(SessionPlugin);
+    if role != RuntimeRole::Dedicated {
+        app.add_plugins((
+            crate::render_scale::RenderScalePlugin,
+            crate::frame_pacing::FramePacingPlugin,
+        ));
+    }
     #[cfg(target_os = "android")]
     app.add_plugins(crate::android_gamepad::AndroidGamepadPlugin);
 

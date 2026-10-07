@@ -2037,6 +2037,7 @@ dependencies = [
  "render",
  "render_frontend",
  "render_gpu",
+ "render_scene",
  "replay",
  "serde_json",
  "session",
