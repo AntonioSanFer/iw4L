@@ -1674,8 +1674,8 @@ fn collect_heap(world: &mut World) {
             pending.extend(frame.locals.iter().cloned());
         }
     }
-    let mut objects = std::collections::HashSet::new();
-    let mut arrays = std::collections::HashSet::new();
+    let mut objects = std::collections::BTreeSet::new();
+    let mut arrays = std::collections::BTreeSet::new();
     let mut runtime = world.resource_mut::<Runtime>();
     runtime.native_roots(&mut pending);
     for waiter in &runtime.waiters {
