@@ -1,3 +1,5 @@
+#[cfg(target_os = "android")]
+mod android_gamepad;
 pub mod args;
 pub mod bench;
 mod frame_owner;

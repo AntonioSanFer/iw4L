@@ -147,8 +147,6 @@ dependencies = [
 [[package]]
 name = "android-activity"
 version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f2a1bb052857d5dd49572219344a7332b31b76405648eabac5bc68978251bcd"
 dependencies = [
  "android-properties",
  "bitflags 2.13.1",
@@ -2018,6 +2016,7 @@ dependencies = [
 name = "bootstrap"
 version = "0.1.0"
 dependencies = [
+ "android-activity",
  "asset_audio",
  "asset_core",
  "asset_game",

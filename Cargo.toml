@@ -3,9 +3,14 @@
 # Remove when a crates.io release includes quinn-rs/quinn#2806.
 [patch.crates-io]
 quinn-proto = { git = "https://github.com/quinn-rs/quinn", rev = "f650e0f213b01ea7bebd60023e5df7df65e5c2bd" }
+# android-activity 0.6.1 plus an input filter hook (`input_filter`, the only
+# change): winit turns gamepad sticks into touches, so the Android gamepad
+# backend in `bootstrap` claims controller events before winit sees them.
+android-activity = { path = "third_party/android-activity" }
 
 [workspace]
 resolver = "3"
+exclude = ["third_party"]
 members = [
     "crates/anim_iw4",
     "crates/approved_tests",

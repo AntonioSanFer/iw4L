@@ -49,6 +49,11 @@ const EXEMPT: &[&str] = &[
     "xtask/src/publish_check.rs",
 ];
 
+/// Upstream crates copied in whole, changed only where the root `Cargo.toml`
+/// `[patch.crates-io]` says. Their tests and their constants are upstream's,
+/// so they skip the test and offset scans — never the path and key scans.
+const VENDORED: &[&str] = &["third_party/"];
+
 fn stray_test(rel: &str, text: &str) -> Option<(usize, &'static str)> {
     if rel.split('/').rev().skip(1).any(|part| part == "tests") {
         return Some((0, "tests/ directory"));
@@ -439,7 +444,8 @@ pub fn run_cli(root: &Path) -> Res<()> {
         }
         // Not every text file is valid UTF-8; what is in one still counts.
         let text = String::from_utf8_lossy(&bytes);
-        if let Some((line, what)) = stray_test(&rel, &text) {
+        let vendored = VENDORED.iter().any(|prefix| rel.starts_with(prefix));
+        if !vendored && let Some((line, what)) = stray_test(&rel, &text) {
             tests.push(Finding {
                 path: path.clone(),
                 line,
@@ -460,6 +466,9 @@ pub fn run_cli(root: &Path) -> Res<()> {
                 what: "pasted private key".to_string(),
                 text: "(redacted)".to_string(),
             });
+            continue;
+        }
+        if vendored {
             continue;
         }
         scanned += 1;

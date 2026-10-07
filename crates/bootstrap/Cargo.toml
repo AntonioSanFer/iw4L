@@ -51,6 +51,7 @@ bevy = { workspace = true, features = ["system_clipboard"] }
 # No OS clipboard backend on Android; bevy_clipboard keeps an in-app one.
 [target.'cfg(target_os = "android")'.dependencies]
 bevy = { workspace = true, features = ["bevy_clipboard"] }
+android-activity = "0.6"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

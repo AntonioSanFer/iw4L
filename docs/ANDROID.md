@@ -73,6 +73,11 @@ console: `set ui_set_game_folder black_ops=/storage/XXXX-XXXX/BlackOps`.
 ## Known limits
 
 - No Steam linking or shortcut (`.lnk`) discovery.
-- Touch input is minimal (menu only); gamepad binds are desktop-owned.
+- Touch input is minimal (menu only).
+- Gamepads: gilrs has no Android backend, and winit reads sticks as touches.
+  `bootstrap::android_gamepad` claims controller events through the input
+  filter added to the vendored `third_party/android-activity` (see the root
+  `Cargo.toml`) and feeds Bevy's gamepad events. Android reports no disconnect
+  through the input queue, so a pad stays registered until restart.
 - Updater is inert (no download/replace off Windows); master browser stays
   disabled unless its env is set.
