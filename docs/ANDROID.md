@@ -40,11 +40,18 @@ Bevy's `android-native-activity` feature is enabled for the android target only.
 Present mode is forced to `Fifo`; `IW4L_PRESENT_MODE` is ignored.
 Only base wgpu features are requested; desktop extras (BC, wireframe, bindless,
 16-bit norm) are skipped, and use sites must check `device.features()` first.
-Mobile GPUs cannot sample BC (DXT), so `asset_material` expands BC textures to
-RGBA8 before upload (`device_texels`). To stay within a phone's memory, archive
-textures drop top mips until their largest side is at most 256 px
-(`EXPANDED_MAX_SIDE`). At 512 px, mp_abandon was killed at about 7 GB on an
-8 GB phone. Most of what remains is CPU-side loader data, not textures.
+Mobile GPUs cannot sample BC (DXT), so `asset_material` expands material
+textures to RGBA8 on the decoding worker (`DecodedMips::for_device`). To stay
+within a phone's memory they also drop top mips until their largest side is at
+most 256 px (`EXPANDED_MAX_SIDE`). The mip cache stays compressed and full size,
+and UI images (menu art, map previews) are not capped. At 512 px, mp_abandon was
+killed at about 7 GB on an 8 GB phone.
+On Android a load keeps nothing for the next one (`KEEP_FOR_NEXT_LOAD` in
+`assets::session_load`): the match takes the common set instead of copying it,
+and there is no resident map or kept first-person texels, so a second load walks
+`common_mp` again. On Android, `load stage:` lines carry `rss=` and `swap=`
+deltas; once the phone swaps, resident bytes alone undercount. The heap figure
+needs `IW4L_COUNTING_ALLOC`.
 
 ## Game files on SD card
 

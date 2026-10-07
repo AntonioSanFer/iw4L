@@ -262,31 +262,45 @@ pub struct LoadSnapshot {
 }
 
 pub fn process_resident_bytes() -> Option<u64> {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         let bytes = proc_status_bytes("VmRSS:")?;
         RSS_PEAK.fetch_max(bytes, Ordering::Relaxed);
         Some(bytes)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        None
+    }
+}
+
+/// Pages of this process the kernel moved to swap (zram on a phone). Under
+/// memory pressure resident bytes stop growing and this does instead, so the
+/// two together are what the process holds.
+pub fn process_swapped_bytes() -> Option<u64> {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        proc_status_bytes("VmSwap:")
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
         None
     }
 }
 
 pub fn peak_resident_bytes() -> Option<u64> {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         proc_status_bytes("VmHWM:")
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
         let n = RSS_PEAK.load(Ordering::Relaxed);
         (n > 0).then_some(n)
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn proc_status_bytes(key: &str) -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let kib = status.lines().find_map(|line| {
@@ -303,6 +317,7 @@ fn mib(bytes: u64) -> f64 {
 #[derive(Clone, Copy, Debug, Default)]
 struct MemSample {
     rss: Option<u64>,
+    swap: Option<u64>,
     heap: Option<u64>,
 }
 
@@ -310,6 +325,7 @@ impl MemSample {
     fn now() -> Self {
         Self {
             rss: process_resident_bytes(),
+            swap: process_swapped_bytes(),
             heap: diag::process_live_heap_bytes(),
         }
     }
@@ -328,8 +344,9 @@ impl MemSample {
             }
         }
         format!(
-            "{}{}",
+            "{}{}{}",
             one("rss", started.rss, ended.rss),
+            one("swap", started.swap, ended.swap),
             one("heap", started.heap, ended.heap)
         )
     }

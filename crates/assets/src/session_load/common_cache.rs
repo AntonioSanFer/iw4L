@@ -48,7 +48,7 @@ impl std::fmt::Display for CommonKey {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct CommonCounts {
     pub(super) startup_count: usize,
     pub(super) t5_mat_count: usize,
@@ -61,7 +61,7 @@ pub(super) struct CommonCounts {
     pub(super) common_reuse_img: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(super) struct CommonProducts {
     pub(super) scripts: crate::ScriptSources,
     pub(super) t5_scene_models: asset_world::MapXModelSceneCatalog,
@@ -130,6 +130,9 @@ impl CommonSet {
     }
 
     pub(super) fn retain(&self, batch: &asset_material::material_images::DecodedImageBatch) -> u64 {
+        if !KEEP_FOR_NEXT_LOAD {
+            return 0;
+        }
         self.retained
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
@@ -174,6 +177,20 @@ impl Drop for FlightGuard {
         }
         drop(slot);
         let _ = flight.set.set_blocking(None);
+    }
+}
+
+/// Stop caching the landed set for `key`. Whoever already holds it keeps it;
+/// the next load that asks prepares it again.
+pub(super) fn release_common(key: &CommonKey) {
+    let mut slot = COMMON.lock().unwrap_or_else(|poison| poison.into_inner());
+    if slot
+        .as_ref()
+        .is_some_and(|flight| flight.key == *key && flight.set.get().is_some())
+    {
+        *slot = None;
+        drop(slot);
+        diag::info!(World, "common set: released {key} to the match");
     }
 }
 

@@ -44,6 +44,13 @@ pub use common_walks::{
 };
 pub use resident_map::load_prepared_match;
 
+/// Whether a load keeps what it built for the load after it: the common set
+/// for the next map, the prepared map for a same-map reload, and the
+/// first-person texels for the next map's GPU images. Each is a second copy of
+/// something the running match already holds — a desktop affords that for a
+/// faster next load; a phone pays for it in swap and gets killed.
+const KEEP_FOR_NEXT_LOAD: bool = !cfg!(target_os = "android");
+
 static PROCESS_CPUS: std::sync::OnceLock<Vec<usize>> = std::sync::OnceLock::new();
 
 pub fn publish_process_cpus(cpus: Vec<usize>) {

@@ -101,13 +101,23 @@ unsafe extern "C" {
     fn getenv(name: *const core::ffi::c_char) -> *mut core::ffi::c_char;
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     fn malloc_trim(pad: usize) -> core::ffi::c_int;
+    #[cfg(target_os = "android")]
+    fn mallopt(param: core::ffi::c_int, value: core::ffi::c_int) -> core::ffi::c_int;
 }
+
+/// Bionic's `M_PURGE` (API 28): return the allocator's cached free pages.
+#[cfg(target_os = "android")]
+const M_PURGE: core::ffi::c_int = -101;
 
 pub fn release_freed_heap() -> std::time::Duration {
     let at = std::time::Instant::now();
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
         unsafe { malloc_trim(0) };
+    }
+    #[cfg(target_os = "android")]
+    {
+        unsafe { mallopt(M_PURGE, 0) };
     }
     at.elapsed()
 }

@@ -35,6 +35,8 @@ struct DecodedMips {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum MipStorage {
     Rgba8,
+    /// RGBA8 expanded from BC5: two linear channels, never sampled as sRGB.
+    Rg8InRgba8,
     Bc1,
     Bc2,
     Bc3,
@@ -72,31 +74,79 @@ impl DecodedMips {
         }
     }
 
-    /// Drops leading levels of a block-compressed chain until its top fits
-    /// [`EXPANDED_MAX_SIDE`], where [`device_texels`] will expand it: RGBA8 is
-    /// four to eight times BC, and a map's textures at full size outgrow a
-    /// phone's memory.
-    fn fit_device(mut self) -> Self {
-        if GPU_SAMPLES_BC || self.storage == MipStorage::Rgba8 {
+    /// The chain as the device will sample it. Where BC cannot be sampled,
+    /// leading levels go until the top fits [`EXPANDED_MAX_SIDE`] and the rest
+    /// is expanded to RGBA8 — four to eight times BC, and a map's textures at
+    /// full size outgrow a phone's memory.
+    ///
+    /// Done once, on the decoding worker: every image wrapped around these
+    /// texels then shares device-ready bytes, and the decode budget weighs
+    /// what will actually be uploaded. The returned chain owns an allocation
+    /// of its own size; the full chain it came from is freed here, not when
+    /// the plan is applied.
+    fn for_device(self) -> Self {
+        if GPU_SAMPLES_BC {
             return self;
         }
+        self.expanded(EXPANDED_MAX_SIDE)
+    }
+
+    /// RGBA8 levels no larger than `max_side`, in an allocation of their own.
+    fn expanded(mut self, max_side: u32) -> Self {
         let mut drop = 0;
         while drop + 1 < self.level_sizes.len()
-            && (self.width >> drop).max(self.height >> drop) > EXPANDED_MAX_SIDE
+            && (self.width >> drop).max(self.height >> drop) > max_side
         {
             drop += 1;
-        }
-        if drop == 0 {
-            return self;
         }
         let skipped: usize = self
             .level_sizes
             .drain(..drop)
             .map(|size| size as usize)
             .sum();
-        self.packed.drain(..skipped);
         self.width = (self.width >> drop).max(1);
         self.height = (self.height >> drop).max(1);
+        let storage = match self.storage {
+            MipStorage::Rgba8 | MipStorage::Rg8InRgba8 => {
+                if skipped > 0 {
+                    self.packed = self.packed.split_off(skipped.min(self.packed.len()));
+                }
+                return self;
+            }
+            MipStorage::Bc5 => MipStorage::Rg8InRgba8,
+            MipStorage::Bc1 | MipStorage::Bc2 | MipStorage::Bc3 => MipStorage::Rgba8,
+        };
+        let texels: usize = (0..self.level_sizes.len())
+            .map(|level| {
+                (self.width >> level).max(1) as usize * (self.height >> level).max(1) as usize * 4
+            })
+            .sum();
+        let mut out = Vec::with_capacity(texels);
+        let mut at = skipped;
+        for (level, size) in self.level_sizes.iter_mut().enumerate() {
+            let width = (self.width >> level).max(1);
+            let height = (self.height >> level).max(1);
+            let encoded = self.packed.get(at..at + *size as usize).unwrap_or(&[]);
+            at += *size as usize;
+            let pixels = match self.storage {
+                MipStorage::Bc1 => decode_blocks(encoded, width, height, PixelFormat::Bc1),
+                MipStorage::Bc2 => decode_blocks(encoded, width, height, PixelFormat::Bc2),
+                MipStorage::Bc3 => decode_blocks(encoded, width, height, PixelFormat::Bc3),
+                MipStorage::Bc5 => decode_bc5_rg(encoded, width, height),
+                MipStorage::Rgba8 | MipStorage::Rg8InRgba8 => unreachable!(),
+            };
+            let before = out.len();
+            match pixels {
+                Ok(pixels) => out.extend_from_slice(&pixels),
+                Err(error) => {
+                    diag::warn!(Zone, "expanding a {width}x{height} BC level: {error}");
+                    out.resize(before + width as usize * height as usize * 4, 0);
+                }
+            }
+            *size = (out.len() - before) as u32;
+        }
+        self.packed = out;
+        self.storage = storage;
         self
     }
 
@@ -112,6 +162,7 @@ impl DecodedMips {
         out.extend_from_slice(&self.height.to_le_bytes());
         out.push(match self.storage {
             MipStorage::Rgba8 => 0,
+            MipStorage::Rg8InRgba8 => 6,
             MipStorage::Bc1 => 1,
             MipStorage::Bc2 => 2,
             MipStorage::Bc3 => 3,
@@ -140,6 +191,7 @@ impl DecodedMips {
         let height = u32::from_le_bytes(bytes[16..20].try_into().ok()?);
         let storage = match bytes[20] {
             0 => MipStorage::Rgba8,
+            6 => MipStorage::Rg8InRgba8,
             1 => MipStorage::Bc1,
             2 => MipStorage::Bc2,
             3 => MipStorage::Bc3,
@@ -175,7 +227,7 @@ impl DecodedMips {
         self.packed.truncate(top);
         let level0 = self.packed;
         let pixels = match self.storage {
-            MipStorage::Rgba8 => level0,
+            MipStorage::Rgba8 | MipStorage::Rg8InRgba8 => level0,
             MipStorage::Bc1 => decode_blocks(&level0, self.width, self.height, PixelFormat::Bc1)?,
             MipStorage::Bc2 => decode_blocks(&level0, self.width, self.height, PixelFormat::Bc2)?,
             MipStorage::Bc3 => decode_blocks(&level0, self.width, self.height, PixelFormat::Bc3)?,
@@ -193,6 +245,7 @@ impl DecodedMips {
         match (self_storage, linear) {
             (MipStorage::Rgba8, true) => TextureFormat::Rgba8Unorm,
             (MipStorage::Rgba8, false) => TextureFormat::Rgba8UnormSrgb,
+            (MipStorage::Rg8InRgba8, _) => TextureFormat::Rgba8Unorm,
             (MipStorage::Bc1, true) => TextureFormat::Bc1RgbaUnorm,
             (MipStorage::Bc1, false) => TextureFormat::Bc1RgbaUnormSrgb,
             (MipStorage::Bc2, true) => TextureFormat::Bc2RgbaUnorm,
@@ -565,7 +618,7 @@ pub fn decode_in_zone_builtin_images(catalog: &mut MaterialDefinitions) -> usize
         if !name.starts_with('$') {
             continue;
         }
-        let Ok(mut mips) = decode_gfx_image(
+        let Ok(mips) = decode_gfx_image(
             &image.payload,
             u32::from(image.width),
             u32::from(image.height),
@@ -573,10 +626,11 @@ pub fn decode_in_zone_builtin_images(catalog: &mut MaterialDefinitions) -> usize
         ) else {
             continue;
         };
+        let mips = mips.for_device();
         let is_normal = name.contains("normal");
         let levels = mips.level_count();
-        let packed = std::mem::take(&mut mips.packed);
-        let (format, data) = device_texels(&mips, packed, is_normal || !image.use_srgb_reads);
+        let format = DecodedMips::texture_format(mips.storage, is_normal || !image.use_srgb_reads);
+        let data = mips.packed;
         let mut gpu = Image::new_uninit(
             Extent3d {
                 width: mips.width,
@@ -975,7 +1029,7 @@ fn prepare_unshared(
         u32::from(source.height),
         source.format,
     )
-    .map(PreparedPayload::mips)
+    .map(|mips| PreparedPayload::mips(mips.for_device()))
     .map_err(|error| ImageOutcome::Unsupported {
         gap: format!("{}: {error}", source.name),
     })
@@ -1012,7 +1066,7 @@ fn prepare_payload(
         };
     }
     match index.decode(name) {
-        Some(Ok(mips)) => Ok(PreparedPayload::mips(mips)),
+        Some(Ok(mips)) => Ok(PreparedPayload::mips(mips.for_device())),
         Some(Err(error)) => Err(ImageOutcome::Unsupported {
             gap: format!("{}: {error}", source.name),
         }),
@@ -1058,7 +1112,7 @@ fn wrap_payload(payload: &PreparedPayload, wrap: WrapRecipe) -> Arc<Image> {
 /// The image `mips` describes, over `data` — copied or moved, whichever the
 /// caller could afford.
 fn wrap_mips(mips: &DecodedMips, data: Vec<u8>, wrap: WrapRecipe) -> Image {
-    let (format, data) = device_texels(mips, data, wrap.linear());
+    let format = DecodedMips::texture_format(mips.storage, wrap.linear());
     let levels = mips.level_count();
     let mut image = Image::new_uninit(
         Extent3d {
@@ -1084,46 +1138,8 @@ fn wrap_mips(mips: &DecodedMips, data: Vec<u8>, wrap: WrapRecipe) -> Image {
 /// device is never asked for `TEXTURE_COMPRESSION_BC` there.
 const GPU_SAMPLES_BC: bool = !cfg!(target_os = "android");
 
-/// The largest side an archive texture keeps when it has to be expanded.
+/// The largest side a texture keeps on a device without BC sampling.
 const EXPANDED_MAX_SIDE: u32 = 256;
-
-/// The upload format and texels for `data`, a chain laid out as `mips`
-/// describes. Without BC sampling, block-compressed levels are expanded to
-/// RGBA8 here; the decoded chain and the mip cache stay compressed.
-fn device_texels(mips: &DecodedMips, data: Vec<u8>, linear: bool) -> (TextureFormat, Vec<u8>) {
-    let format = DecodedMips::texture_format(mips.storage, linear);
-    if GPU_SAMPLES_BC || mips.storage == MipStorage::Rgba8 {
-        return (format, data);
-    }
-    let rgba_format = if linear || mips.storage == MipStorage::Bc5 {
-        TextureFormat::Rgba8Unorm
-    } else {
-        TextureFormat::Rgba8UnormSrgb
-    };
-    let mut out = Vec::with_capacity(data.len() * 8);
-    let mut at = 0usize;
-    for (level, &size) in mips.level_sizes.iter().enumerate() {
-        let width = (mips.width >> level).max(1);
-        let height = (mips.height >> level).max(1);
-        let encoded = data.get(at..at + size as usize).unwrap_or(&[]);
-        at += size as usize;
-        let pixels = match mips.storage {
-            MipStorage::Bc1 => decode_blocks(encoded, width, height, PixelFormat::Bc1),
-            MipStorage::Bc2 => decode_blocks(encoded, width, height, PixelFormat::Bc2),
-            MipStorage::Bc3 => decode_blocks(encoded, width, height, PixelFormat::Bc3),
-            MipStorage::Bc5 => decode_bc5_rg(encoded, width, height),
-            MipStorage::Rgba8 => unreachable!(),
-        };
-        match pixels {
-            Ok(pixels) => out.extend_from_slice(&pixels),
-            Err(error) => {
-                diag::warn!(Zone, "expanding a {width}x{height} BC level: {error}");
-                out.resize(out.len() + width as usize * height as usize * 4, 0);
-            }
-        }
-    }
-    (rgba_format, out)
-}
 
 /// BC5 as RGBA8 with the two channels kept in red and green, where a
 /// `Bc5RgUnorm` view would have put them.
@@ -1652,12 +1668,12 @@ fn load_or_decode_mips(candidate: &asset_transport::IwdFile) -> Result<DecodedMi
     let key = mip_cache_key(candidate.crc32(), candidate.size(), candidate.entry());
     let io_at = std::time::Instant::now();
     if let Some(mips) = read_cached_mips(&key, io_at) {
-        return Ok(mips.fit_device());
+        return Ok(mips);
     }
 
     let _flight = crate::cache_flight("mips", &key);
     if let Some(mips) = read_cached_mips(&key, std::time::Instant::now()) {
-        return Ok(mips.fit_device());
+        return Ok(mips);
     }
     let bytes = candidate.read()?;
     let mips = decode_iwi_mips(&bytes)?;
@@ -1668,7 +1684,7 @@ fn load_or_decode_mips(candidate: &asset_transport::IwdFile) -> Result<DecodedMi
     }
     MIP_IO_NS.fetch_add(store_at.elapsed().as_nanos() as u64, Ordering::Relaxed);
     MIP_MISS.fetch_add(1, Ordering::Relaxed);
-    Ok(mips.fit_device())
+    Ok(mips)
 }
 
 pub fn iwd_read_cost() -> (f64, u64, f64) {
@@ -1965,7 +1981,7 @@ pub fn decode_iwi_texture(
     is_normal: bool,
     use_srgb_reads: bool,
 ) -> Result<Image, String> {
-    let mips = decode_iwi_mips(bytes)?;
+    let mips = decode_iwi_mips(bytes)?.for_device();
     let wrap = WrapRecipe {
         sampler_state,
         is_normal,
@@ -1994,6 +2010,7 @@ pub fn decode_iwi_texture_t6_folded(
         MipStorage::Bc1 => (8, 0, PixelFormat::Bc1),
         MipStorage::Bc3 => (16, 8, PixelFormat::Bc3),
         _ => {
+            let mips = mips.for_device();
             let data = mips.packed.clone();
             return Ok(wrap_mips(&mips, data, wrap));
         }
@@ -2059,6 +2076,7 @@ pub fn decode_iwi_texture_t6_folded(
         }
         offset += size;
     }
+    let mips = mips.for_device();
     let data = mips.packed.clone();
     Ok(wrap_mips(&mips, data, wrap))
 }
@@ -2204,7 +2222,7 @@ pub fn decode_iwi_texture_native(
     sampler_state: u8,
     use_srgb_reads: bool,
 ) -> Result<Image, String> {
-    let mips = decode_iwi_mips_with(bytes, true)?;
+    let mips = decode_iwi_mips_with(bytes, true)?.for_device();
     let wrap = WrapRecipe {
         sampler_state,
         is_normal: false,

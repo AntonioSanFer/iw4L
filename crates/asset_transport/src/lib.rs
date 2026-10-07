@@ -14,6 +14,8 @@ pub use artifact_cache::{
     fnv1a64_more,
 };
 pub use asset_core::ZoneGame;
+#[cfg(target_os = "android")]
+pub use discover::storage_volumes;
 pub use discover::{
     GamesRoot, MapPack, ZoneFile, ensure_artifacts_dir, find_common_mp_for_envelope,
     find_common_mp_for_zone, find_game_install, find_localized_common_mp_for_zone,
@@ -23,8 +25,6 @@ pub use discover::{
     list_mp_maps, load_dotenv, map_load_title, peek_zone_version, search_roots, set_game_folders,
     split_zone_key, zone_game_for_path, zone_version,
 };
-#[cfg(target_os = "android")]
-pub use discover::storage_volumes;
 pub use ipak::{IPak, ipak_name_hash};
 pub use iwd::{
     IwdFile, IwdIndex, IwdSoundIndex, cached_iwd_dirs, game_main_for_zone, game_mains_by_root,
@@ -35,7 +35,7 @@ pub use namespace_trees::{NamespaceSoundIwd, NamespaceTree, NamespaceTrees};
 pub use progress::{
     LoadLaneTiming, LoadProgress, LoadSnapshot, StageEnd, StageHandle, StageId, StageKey,
     StageOutcome, StageScope, StageSnapshot, WorkCount, peak_resident_bytes,
-    process_resident_bytes,
+    process_resident_bytes, process_swapped_bytes,
 };
 pub use sab::{
     SAB_FORMAT_FLAC, SAB_FORMAT_PCMS16, SabEntry, SoundAssetBank, open_sound_asset_banks,

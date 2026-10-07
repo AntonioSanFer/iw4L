@@ -43,8 +43,11 @@ pub(super) async fn walk_prepared_match(
         &mut donor_report,
     );
     let waiting = progress.begin_scoped(StageId::CommonAssets, "shared common", None);
-    let (common, reach) = ensure_common(key).await;
+    let (mut common, reach) = ensure_common(key).await;
     waiting.done();
+    if !KEEP_FOR_NEXT_LOAD {
+        release_common(&common.key);
+    }
     if progress.is_canceled() {
         diag::info!(
             World,
@@ -99,7 +102,12 @@ pub(super) async fn walk_prepared_match(
             },
         report: mut common_report,
         localize_report,
-    } = common.products.clone();
+    } = match Arc::get_mut(&mut common) {
+        // Released from the cache above and held by nothing else: the match
+        // takes the products instead of copying them.
+        Some(set) if !KEEP_FOR_NEXT_LOAD => std::mem::take(&mut set.products),
+        _ => common.products.clone(),
+    };
     let clone_ms = cloning.elapsed().as_secs_f32() * 1000.0;
     let iw5_mat_n = iw5_materials.materials.len();
     common_report.append(&mut donor_report);
