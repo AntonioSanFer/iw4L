@@ -71,6 +71,11 @@ near 16.7 ms would otherwise flip between 60 and 30. Settings files older than
 v3 keep the phone's graphics defaults instead of the desktop ones they were
 written with. `shadows` gates sun shadows as well as spot shadows.
 
+The allocator is mimalloc, as on Windows (`diag`); it needs `local_dynamic_tls`
+because the game is a dlopened library. Animated script models farther than
+768 units keep their last CPU-skinned pose for 2 frames, past 2048 for 4
+(`HOLD_DISTANT_POSES` in `render_anim`).
+
 Every 5 s the log has a `frames:` line: `p50/p95/p99/max` of the frame interval,
 main-world `update`, render-world `render` (without `acquire`) and the
 swapchain `acquire` wait, which grows when the GPU or vsync is the limit.

@@ -31,6 +31,31 @@ struct ScriptModelDobjs {
 struct PersistentScriptDobj {
     dobj: std::sync::Arc<xmodel_runtime::DObj>,
     reuse_key: xmodel_runtime::DObjReuseKey,
+    held: Option<HeldPose>,
+}
+
+/// The state a model was last skinned with, so a distant one can show that
+/// pose again for a few frames while only its animation time moved on.
+struct HeldPose {
+    state: xmodel_runtime::DObjSemanticState,
+    posed_frame: u64,
+}
+
+/// Phones skin animated script models on the CPU for every frame their clock
+/// moves, which on a foliage-heavy map was a sixth of the main thread. Far
+/// ones keep their last pose for a few frames instead; near ones never do.
+const HOLD_DISTANT_POSES: bool = cfg!(target_os = "android");
+
+/// Frames between re-skins at a distance from the eye, in inches.
+fn repose_interval(origin: [f32; 3], eye: Option<[f32; 3]>) -> u64 {
+    let Some(eye) = eye else {
+        return 1;
+    };
+    match Vec3::from_array(origin).distance(Vec3::from_array(eye)) {
+        d if d < 768.0 => 1,
+        d if d < 2048.0 => 2,
+        _ => 4,
+    }
 }
 
 const SPAWNED_PRESENCE: std::ops::Range<u32> = 0x4000_0000..0x8000_0000;
@@ -75,6 +100,7 @@ struct ScriptModelPoseLocals<'w, 's> {
     remap: Local<'s, Vec<Option<usize>>>,
     lod_skinned: Res<'w, render_scene::LodRampSkinnedDvar>,
     gfx_scene: Res<'w, HostGfxScene>,
+    frame: Local<'s, u64>,
 }
 
 #[derive(SystemParam)]
@@ -568,7 +594,10 @@ fn pose_script_models(
         mut remap,
         lod_skinned,
         gfx_scene,
+        mut frame,
     } = locals;
+    *frame = frame.wrapping_add(1);
+    let frame = *frame;
     live_assets.clear();
     live_ids.clear();
     let producer_ready = assets.is_some() && atlas.is_some() && facts.spawned;
@@ -658,9 +687,20 @@ fn pose_script_models(
                     .0
                     .clip(asset_core::AssetNamespace::Iw4, name)
             });
+            let held = HOLD_DISTANT_POSES
+                .then(|| persist.by_id.get(&id)?.held.as_ref())
+                .flatten()
+                .filter(|held| {
+                    frame.wrapping_sub(held.posed_frame) < repose_interval(origin, eye)
+                        && script_model_pose_topology_matches(&held.state, &owner.dobj_state)
+                });
             let index = if let Some(index) =
                 product.asset_index(&owner.current_model, &owner.dobj_state, &camera_lods)
             {
+                index
+            } else if let Some(index) = held.and_then(|held| {
+                product.asset_index(&owner.current_model, &held.state, &camera_lods)
+            }) {
                 index
             } else {
                 let Some(slot_dobj) = persist.by_id.get(&id) else {
@@ -690,6 +730,12 @@ fn pose_script_models(
                             ));
                         }
                     }
+                }
+                if HOLD_DISTANT_POSES && let Some(slot) = persist.by_id.get_mut(&id) {
+                    slot.held = Some(HeldPose {
+                        state: owner.dobj_state.clone(),
+                        posed_frame: frame,
+                    });
                 }
                 append_or_overwrite_script_pose(
                     &mut product,
@@ -1157,6 +1203,7 @@ fn compose_or_reuse_script_dobj(
         PersistentScriptDobj {
             dobj,
             reuse_key: key,
+            held: None,
         },
     );
     Some(())

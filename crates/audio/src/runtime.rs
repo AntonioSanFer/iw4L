@@ -459,10 +459,14 @@ fn control(
         sources: Vec::new(),
         asserted: Vec::new(),
     };
-    let mut present_sources = HashSet::with_capacity(LOGICAL_INSTANCES);
-    let mut source_cues = HashMap::<(SourceKey, u64), Arc<crate::cue::CueState>>::with_capacity(
-        crate::sources::SOURCE_HISTORY,
-    );
+    // Probed for every source on every pass of this loop; SipHash was a fifth
+    // of its time on a phone.
+    let mut present_sources =
+        bevy::platform::collections::HashSet::with_capacity(LOGICAL_INSTANCES);
+    let mut source_cues = bevy::platform::collections::HashMap::<
+        (SourceKey, u64),
+        Arc<crate::cue::CueState>,
+    >::with_capacity(crate::sources::SOURCE_HISTORY);
     let mut silence = [[0.0; 2]; QUANTUM];
     while !shutdown.load(Ordering::Acquire) {
         let diag_pass = Instant::now();
