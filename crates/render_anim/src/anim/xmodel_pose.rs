@@ -43,14 +43,227 @@ pub fn skin_model_filtered(
     surface_rigid: impl Fn(usize) -> bool,
     lod: u8,
 ) -> Option<Vec<PosedModelSurface>> {
-    let blended = blend_skel_vertices_inner::<true>(
+    if skel.surface_vertex_ranges.is_empty() {
+        let blended = blend_skel_vertices_inner::<true>(
+            skel,
+            bone_to_local,
+            |surface| surface_is_visible(surface),
+            surface_rigid,
+            lod,
+        );
+        return meshes_from_blended(skel, hide_tags, surface_is_visible, lod, blended);
+    }
+    skin_lod_surfaces(
         skel,
         bone_to_local,
-        |surface| surface_is_visible(surface),
+        hide_tags,
+        surface_is_visible,
         surface_rigid,
         lod,
-    );
-    meshes_from_blended(skel, hide_tags, surface_is_visible, lod, blended)
+    )
+}
+
+/// `meshes_from_blended` over `blend_skel_vertices_inner`, without the
+/// whole-skeleton copies: each LOD surface is copied once from the bind pose
+/// and skinned in place.
+fn skin_lod_surfaces(
+    skel: &FpvSkel,
+    bone_to_local: impl Fn(usize) -> Mat4,
+    hide_tags: &[String],
+    surface_is_visible: impl Fn(usize) -> bool,
+    surface_rigid: impl Fn(usize) -> bool,
+    lod: u8,
+) -> Option<Vec<PosedModelSurface>> {
+    let surface_count = skel.surface_vertex_ranges.len();
+    let lod_range = skel.surfaces_for_lod(lod);
+    if lod_range.is_empty() {
+        return Some(Vec::new());
+    }
+    if skel.surface_index_ranges.len() != surface_count
+        || skel.surface_materials.len() != surface_count
+    {
+        return None;
+    }
+    let vertex_n = skel.positions.len();
+    for surface_index in lod_range.clone() {
+        let (first_vertex, vertex_count) = skel.surface_vertex_ranges[surface_index];
+        let (index_start, index_count) = skel.surface_index_ranges[surface_index];
+        let vertex_end = first_vertex.checked_add(vertex_count)?;
+        let index_end = index_start.checked_add(index_count)?;
+        if vertex_end > vertex_n
+            || vertex_end > skel.uvs.len()
+            || vertex_end > skel.colors.len()
+            || vertex_end > skel.normals.len()
+            || index_end > skel.indices.len()
+        {
+            return None;
+        }
+    }
+    let (active_vert, rigid_vert) =
+        vertex_stream_masks(skel, lod, &surface_is_visible, surface_rigid);
+    let bone_cache = skin_bone_cache(skel, &active_vert, bone_to_local);
+    let has_packed = skel.packed_vertices.len() == vertex_n;
+
+    let hide_active = !hide_tags.is_empty() && skel.surface_part_bits.len() == surface_count;
+    let mut hide_words = [0u32; 6];
+    if hide_active {
+        for bone in 0..skel.bone_names.len() {
+            if asset_game::bone_has_hidden_ancestor(
+                &skel.bone_names,
+                |b| skel.parent_of(b),
+                bone,
+                hide_tags,
+            ) {
+                set_hide_part_bit(&mut hide_words, bone);
+            }
+        }
+    }
+    let mut out = Vec::with_capacity(lod_range.len());
+    for surface_index in lod_range {
+        let (first_vertex, vertex_count) = skel.surface_vertex_ranges[surface_index];
+        let (index_start, index_count) = skel.surface_index_ranges[surface_index];
+        let vertex_end = first_vertex + vertex_count;
+        let index_end = index_start + index_count;
+        let visible = surface_is_visible(surface_index)
+            && (!hide_active
+                || !surface_hidden(&skel.surface_part_bits[surface_index], &hide_words, 0));
+        let local_indices = if visible {
+            skel.indices[index_start..index_end]
+                .iter()
+                .map(|&global| {
+                    let global = global as usize;
+                    global
+                        .checked_sub(first_vertex)
+                        .filter(|local| *local < vertex_count)
+                        .map(|local| local as u32)
+                })
+                .collect::<Option<Vec<_>>>()?
+        } else {
+            Vec::new()
+        };
+        let mut positions = skel.positions[first_vertex..vertex_end].to_vec();
+        let mut normals = skel.normals[first_vertex..vertex_end].to_vec();
+        let mut packed_vertices = if has_packed {
+            skel.packed_vertices[first_vertex..vertex_end].to_vec()
+        } else {
+            Vec::new()
+        };
+        for local in 0..vertex_count {
+            let i = first_vertex + local;
+            if !active_vert[i] {
+                continue;
+            }
+            let Some(skin) = skel.vert_skin.get(i) else {
+                continue;
+            };
+            let p = Vec3::from_array(positions[local]);
+            let n = Vec3::from_array(normals[local]);
+            let (mut posed_position, primary_basis) =
+                skin_vertex(skin, p, rigid_vert[i], &bone_cache);
+            let mut posed_normal = primary_basis.transform_vector3(n);
+            if posed_position == Vec3::ZERO && skin.weights[0] == 0.0 {
+                posed_position = p;
+                posed_normal = n;
+            }
+            positions[local] = posed_position.to_array();
+            normals[local] = if posed_normal == Vec3::ZERO {
+                [0.0, 0.0, 1.0]
+            } else {
+                posed_normal.normalize_or_zero().to_array()
+            };
+            if has_packed {
+                pose_packed_vertex(&mut packed_vertices[local], posed_position, primary_basis);
+            }
+        }
+        let mut mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_UV_0,
+            skel.uvs[first_vertex..vertex_end].to_vec(),
+        );
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_COLOR,
+            skel.colors[first_vertex..vertex_end].to_vec(),
+        );
+        mesh.insert_indices(Indices::U32(local_indices));
+        out.push(PosedModelSurface {
+            surface_index,
+            mesh,
+            material: skel.surface_materials[surface_index].map(|i| i.get()),
+            packed_vertices,
+            owner: FpvSurfOwner::Gun,
+            model: 0,
+        });
+    }
+    Some(out)
+}
+
+/// The skinning matrices up to the highest bone an active vertex reads, with
+/// their column arrays for the weighted blend.
+fn skin_bone_cache(
+    skel: &FpvSkel,
+    active_vert: &[bool],
+    bone_to_local: impl Fn(usize) -> Mat4,
+) -> Vec<(Mat4, [f32; 16])> {
+    let max_bone = skel
+        .vert_skin
+        .iter()
+        .zip(active_vert)
+        .filter(|(_, active)| **active)
+        .flat_map(|(skin, _)| {
+            std::iter::once(skin.bones[0]).chain(
+                (1..4)
+                    .filter(|&extra| skin.weights[extra] > 0.0)
+                    .map(|extra| skin.bones[extra]),
+            )
+        })
+        .max();
+    max_bone.map_or_else(Vec::new, |max_bone| {
+        (0..=usize::from(max_bone))
+            .map(|bone| {
+                let matrix = bone_to_local(bone);
+                (matrix, matrix.to_cols_array())
+            })
+            .collect()
+    })
+}
+
+/// One vertex's posed position and the primary bone's matrix, which also
+/// carries its normal and tangent frame.
+fn skin_vertex(
+    skin: &asset_model::VertSkin,
+    p: Vec3,
+    rigid: bool,
+    bone_cache: &[(Mat4, [f32; 16])],
+) -> (Vec3, Mat4) {
+    let (primary, primary_esi) = &bone_cache[usize::from(skin.bones[0])];
+    if rigid {
+        return (primary.transform_point3(p), *primary);
+    }
+    let mut extras = [(primary_esi, 0u16); 3];
+    let mut extra_n = 0usize;
+    for extra in 1..4 {
+        if skin.weights[extra] <= 0.0 {
+            continue;
+        }
+        extras[extra_n] = (
+            &bone_cache[usize::from(skin.bones[extra])].1,
+            skin.weight_u16[extra],
+        );
+        extra_n += 1;
+    }
+    (
+        Vec3::from_array(dpvs_iw4::skin_packed_weighted_point(
+            p.to_array(),
+            primary_esi,
+            &extras[..extra_n],
+        )),
+        *primary,
+    )
 }
 
 pub struct BlendedSkel {
@@ -94,27 +307,7 @@ fn blend_skel_vertices_inner<const DECODED: bool>(
     let mut normals = DECODED.then(|| skel.normals.clone()).unwrap_or_default();
     let mut posed_packed =
         (skel.packed_vertices.len() == skel.positions.len()).then(|| skel.packed_vertices.clone());
-    let max_bone = skel
-        .vert_skin
-        .iter()
-        .zip(&active_vert)
-        .filter(|(_, active)| **active)
-        .flat_map(|(skin, _)| {
-            std::iter::once(skin.bones[0]).chain(
-                (1..4)
-                    .filter(|&extra| skin.weights[extra] > 0.0)
-                    .map(|extra| skin.bones[extra]),
-            )
-        })
-        .max();
-    let bone_cache: Vec<_> = max_bone.map_or_else(Vec::new, |max_bone| {
-        (0..=usize::from(max_bone))
-            .map(|bone| {
-                let matrix = bone_to_local(bone);
-                (matrix, matrix.to_cols_array())
-            })
-            .collect()
-    });
+    let bone_cache = skin_bone_cache(skel, &active_vert, bone_to_local);
     for (i, skin) in skel.vert_skin.iter().enumerate() {
         if !active_vert.get(i).copied().unwrap_or(false) {
             continue;
@@ -122,38 +315,13 @@ fn blend_skel_vertices_inner<const DECODED: bool>(
         let p = Vec3::from_array(skel.positions[i]);
         let n = DECODED.then(|| Vec3::from_array(skel.normals[i]));
 
-        let (mut posed_position, mut posed_normal, primary_basis) =
-            if rigid_vert.get(i).copied().unwrap_or(false) {
-                let matrix = bone_cache[usize::from(skin.bones[0])].0;
-                (
-                    matrix.transform_point3(p),
-                    n.map(|n| matrix.transform_vector3(n)),
-                    matrix,
-                )
-            } else {
-                let (primary, primary_esi) = &bone_cache[usize::from(skin.bones[0])];
-                let mut extras = [(primary_esi, 0u16); 3];
-                let mut extra_n = 0usize;
-                for extra in 1..4 {
-                    if skin.weights[extra] <= 0.0 {
-                        continue;
-                    }
-                    extras[extra_n] = (
-                        &bone_cache[usize::from(skin.bones[extra])].1,
-                        skin.weight_u16[extra],
-                    );
-                    extra_n += 1;
-                }
-                (
-                    Vec3::from_array(dpvs_iw4::skin_packed_weighted_point(
-                        p.to_array(),
-                        primary_esi,
-                        &extras[..extra_n],
-                    )),
-                    n.map(|n| primary.transform_vector3(n)),
-                    *primary,
-                )
-            };
+        let (mut posed_position, primary_basis) = skin_vertex(
+            skin,
+            p,
+            rigid_vert.get(i).copied().unwrap_or(false),
+            &bone_cache,
+        );
+        let mut posed_normal = n.map(|n| primary_basis.transform_vector3(n));
         if posed_position == Vec3::ZERO && skin.weights[0] == 0.0 {
             posed_position = p;
             posed_normal = n;
@@ -451,27 +619,7 @@ pub fn skin_packed_into(
         return;
     }
     let (active_vert, rigid_vert) = vertex_stream_masks(skel, lod, |_| true, surface_rigid);
-    let max_bone = skel
-        .vert_skin
-        .iter()
-        .zip(&active_vert)
-        .filter(|(_, active)| **active)
-        .flat_map(|(skin, _)| {
-            std::iter::once(skin.bones[0]).chain(
-                (1..4)
-                    .filter(|&extra| skin.weights[extra] > 0.0)
-                    .map(|extra| skin.bones[extra]),
-            )
-        })
-        .max();
-    let bone_cache: Vec<_> = max_bone.map_or_else(Vec::new, |max_bone| {
-        (0..=usize::from(max_bone))
-            .map(|bone| {
-                let matrix = bone_to_local(bone);
-                (matrix, matrix.to_cols_array())
-            })
-            .collect()
-    });
+    let bone_cache = skin_bone_cache(skel, &active_vert, bone_to_local);
     for surf in &layout.surfaces {
         if !surf.visible {
             continue;
@@ -487,32 +635,12 @@ pub fn skin_packed_into(
                 continue;
             };
             let p = Vec3::from_array(skel.positions[src]);
-            let (posed_position, primary_basis) = if rigid_vert.get(src).copied().unwrap_or(false) {
-                let matrix = bone_cache[usize::from(skin.bones[0])].0;
-                (matrix.transform_point3(p), matrix)
-            } else {
-                let (primary, primary_esi) = &bone_cache[usize::from(skin.bones[0])];
-                let mut extras = [(primary_esi, 0u16); 3];
-                let mut extra_n = 0usize;
-                for extra in 1..4 {
-                    if skin.weights[extra] <= 0.0 {
-                        continue;
-                    }
-                    extras[extra_n] = (
-                        &bone_cache[usize::from(skin.bones[extra])].1,
-                        skin.weight_u16[extra],
-                    );
-                    extra_n += 1;
-                }
-                (
-                    Vec3::from_array(dpvs_iw4::skin_packed_weighted_point(
-                        p.to_array(),
-                        primary_esi,
-                        &extras[..extra_n],
-                    )),
-                    *primary,
-                )
-            };
+            let (posed_position, primary_basis) = skin_vertex(
+                skin,
+                p,
+                rigid_vert.get(src).copied().unwrap_or(false),
+                &bone_cache,
+            );
             let posed_position = if posed_position == Vec3::ZERO && skin.weights[0] == 0.0 {
                 p
             } else {
