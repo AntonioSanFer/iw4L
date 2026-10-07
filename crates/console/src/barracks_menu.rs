@@ -11,6 +11,7 @@ pub(crate) struct BarracksMenuState {
     reward_hover: usize,
     rewards: Vec<u32>,
     status: String,
+    published: bool,
 }
 
 pub(crate) fn register(registry: &mut ConsoleRegistry) {
@@ -47,6 +48,18 @@ pub(crate) fn route(
         commands.read().for_each(drop);
         return;
     }
+    // The dvars below follow from these inputs and the commands alone; with
+    // none of them new they already hold what this frame would write.
+    if state.published
+        && commands.is_empty()
+        && !profile.is_changed()
+        && !settings.is_changed()
+        && !catalog.is_changed()
+        && !loc.is_changed()
+    {
+        return;
+    }
+    state.published = true;
     let rows = reward_rows(&catalog);
     for command in commands
         .read()

@@ -1,21 +1,36 @@
+use assets::LoadingScreen;
 use bevy::prelude::*;
-use frame::{LaunchIdentity, LaunchReport};
+use frame::{AppScreen, LaunchIdentity, LaunchReport};
 
 use crate::classes::store::SessionClassStore;
-use crate::gap_hud::GapHud;
+use crate::gap_hud::{GapHud, gap_should_show};
 
 pub fn publish_gap_hud(
     identity: Option<Res<LaunchIdentity>>,
     report: Option<Res<LaunchReport>>,
     class_store: Res<SessionClassStore>,
     mut hud: ResMut<GapHud>,
+    (loading, screen): (Option<Res<LoadingScreen>>, Res<AppScreen>),
+    mut published: Local<bool>,
 ) {
+    // Nothing shows it in a match, where the prediction line changes every
+    // frame; it is rebuilt once it shows again.
+    if !gap_should_show(loading, screen) {
+        *published = false;
+        return;
+    }
     let Some(identity) = identity else {
         return;
     };
     let Some(report) = report else {
         return;
     };
+    // Nothing below changes unless one of these does (`IW4L_GAMETYPE` is
+    // fixed for the process).
+    if *published && !report.is_changed() && !identity.is_changed() && !class_store.is_changed() {
+        return;
+    }
+    *published = true;
 
     let mut body = vec![
         format!("role: {}", identity.role_label),

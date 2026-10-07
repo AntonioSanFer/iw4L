@@ -17,6 +17,7 @@ pub(crate) struct ClassMenuState {
     attachments: bool,
     camo: bool,
     hover: usize,
+    published: bool,
 }
 
 fn camo_names(catalog: &ClassLoadoutCatalog, weapon: &str) -> Vec<String> {
@@ -162,6 +163,17 @@ pub(crate) fn route(
     mut menus: MessageWriter<UiMenuRequest>,
     mut echo: crate::feature_dispatch::ConsoleEcho,
 ) {
+    // The dvars below follow from these inputs and the commands alone; with
+    // none of them new they already hold what this frame would write.
+    if state.published
+        && events.is_empty()
+        && !store.is_changed()
+        && !catalog.is_changed()
+        && !loc.is_changed()
+    {
+        return;
+    }
+    state.published = true;
     for command in events
         .read()
         .filter(|command| command.name.starts_with("ui_class_"))

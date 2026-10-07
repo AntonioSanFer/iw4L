@@ -87,16 +87,19 @@ fn wake_query_cell_n(lo: (i32, i32, i32), hi: (i32, i32, i32)) -> i64 {
 }
 
 impl DynEntWakeBroadphase {
-    fn rebuild(&mut self, entries: impl IntoIterator<Item = DynEntWakeEntry>) {
-        self.entries.clear();
-        self.cells.clear();
-        self.candidate_indices.clear();
-        self.candidates.clear();
+    fn begin_frame(&mut self) {
         self.query_n = 0;
         self.candidate_n = 0;
         self.full_scan_n = 0;
         self.fallback_n = 0;
         self.query_ms = 0.0;
+    }
+
+    fn rebuild(&mut self, entries: impl IntoIterator<Item = DynEntWakeEntry>) {
+        self.entries.clear();
+        self.cells.clear();
+        self.candidate_indices.clear();
+        self.candidates.clear();
         self.built = true;
 
         for entry in entries {
@@ -180,11 +183,28 @@ impl DynEntWakeBroadphase {
     }
 }
 
+type MovedDynEnt = (
+    With<DynEntModelEntity>,
+    Or<(Changed<Transform>, Changed<WorldDynEntInstance>)>,
+);
+
 pub(crate) fn rebuild_dyn_ent_wake_broadphase(
     catalog: Option<Res<asset_world::MapXModelSceneCatalog>>,
     instances: Query<(Entity, &WorldDynEntInstance, &Transform), With<DynEntModelEntity>>,
+    moved: Query<(), MovedDynEnt>,
     mut broadphase: ResMut<DynEntWakeBroadphase>,
+    mut had_catalog: Local<Option<bool>>,
 ) {
+    broadphase.begin_frame();
+    // Most dyn ents sleep: the grid only moves when an entry does, one comes
+    // or goes, or the radii behind it change.
+    let catalog_changed = catalog.as_ref().is_some_and(|catalog| catalog.is_changed())
+        || *had_catalog != Some(catalog.is_some());
+    let same_entries = broadphase.entries.len() == instances.iter().count();
+    if !catalog_changed && moved.is_empty() && same_entries {
+        return;
+    }
+    *had_catalog = Some(catalog.is_some());
     let catalog = catalog.as_deref();
     broadphase.rebuild(instances.iter().map(|(entity, inst, transform)| {
         let radius = can_wake(inst)
