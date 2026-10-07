@@ -101,13 +101,10 @@ unsafe extern "C" {
     fn getenv(name: *const core::ffi::c_char) -> *mut core::ffi::c_char;
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     fn malloc_trim(pad: usize) -> core::ffi::c_int;
+    /// Returns mimalloc's free pages to the OS; `libmimalloc-sys` links it.
     #[cfg(target_os = "android")]
-    fn mallopt(param: core::ffi::c_int, value: core::ffi::c_int) -> core::ffi::c_int;
+    fn mi_collect(force: bool);
 }
-
-/// Bionic's `M_PURGE` (API 28): return the allocator's cached free pages.
-#[cfg(target_os = "android")]
-const M_PURGE: core::ffi::c_int = -101;
 
 pub fn release_freed_heap() -> std::time::Duration {
     let at = std::time::Instant::now();
@@ -117,14 +114,16 @@ pub fn release_freed_heap() -> std::time::Duration {
     }
     #[cfg(target_os = "android")]
     {
-        unsafe { mallopt(M_PURGE, 0) };
+        unsafe { mi_collect(true) };
     }
     at.elapsed()
 }
 
-#[cfg(windows)]
+/// mimalloc where the platform allocator costs frames: on a phone, scudo's
+/// locks and frees were a tenth of both busy threads' CPU.
+#[cfg(any(windows, target_os = "android"))]
 static BACKING: mimalloc::MiMalloc = mimalloc::MiMalloc;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "android")))]
 static BACKING: std::alloc::System = std::alloc::System;
 
 pub struct ProcessCountingAllocator;

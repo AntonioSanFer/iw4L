@@ -13,5 +13,10 @@ serde_json = { workspace = true }
 mimalloc = { version = "0.1", default-features = false }
 windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
 
+# The game is a dlopened library on Android, where bionic refuses the
+# initial-exec TLS model mimalloc defaults to.
+[target.'cfg(target_os = "android")'.dependencies]
+mimalloc = { version = "0.1", default-features = false, features = ["local_dynamic_tls"] }
+
 [lints]
 workspace = true

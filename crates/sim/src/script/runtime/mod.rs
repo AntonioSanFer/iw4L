@@ -1642,6 +1642,22 @@ impl Runtime {
     }
 }
 
+#[derive(Clone, Copy)]
+enum HeapRef {
+    Object(u64),
+    Array(u64),
+}
+
+impl HeapRef {
+    fn of(value: &Value) -> Option<Self> {
+        match value {
+            Value::Object(id) => Some(Self::Object(*id)),
+            Value::Array(id) => Some(Self::Array(*id)),
+            _ => None,
+        }
+    }
+}
+
 fn collect_heap(world: &mut World) {
     let mut pending = vec![Value::Object(0), Value::Object(1), Value::Object(2)];
     pending.extend(
@@ -1658,8 +1674,8 @@ fn collect_heap(world: &mut World) {
             pending.extend(frame.locals.iter().cloned());
         }
     }
-    let mut objects = std::collections::BTreeSet::new();
-    let mut arrays = std::collections::BTreeSet::new();
+    let mut objects = std::collections::HashSet::new();
+    let mut arrays = std::collections::HashSet::new();
     let mut runtime = world.resource_mut::<Runtime>();
     runtime.native_roots(&mut pending);
     for waiter in &runtime.waiters {
@@ -1668,16 +1684,20 @@ fn collect_heap(world: &mut World) {
             pending.extend(values.iter().cloned());
         }
     }
-    while let Some(value) = pending.pop() {
-        match value {
-            Value::Object(id) if objects.insert(id) => {
+    // Only object and array ids reach further, so the walk carries those and
+    // never clones the heap's values: this runs every scheduler tick.
+    let mut reach: Vec<HeapRef> = pending.iter().filter_map(HeapRef::of).collect();
+    drop(pending);
+    while let Some(next) = reach.pop() {
+        match next {
+            HeapRef::Object(id) if objects.insert(id) => {
                 if let Some(fields) = runtime.objects.get(&id) {
-                    pending.extend(fields.values().cloned());
+                    reach.extend(fields.values().filter_map(HeapRef::of));
                 }
             }
-            Value::Array(id) if arrays.insert(id) => {
+            HeapRef::Array(id) if arrays.insert(id) => {
                 if let Some(values) = runtime.arrays.get(&id) {
-                    pending.extend(values.values().cloned());
+                    reach.extend(values.values().filter_map(HeapRef::of));
                 }
             }
             _ => {}
