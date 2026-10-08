@@ -37,6 +37,9 @@ pub(crate) struct StepRequest {
 
 pub(crate) fn schedule() -> Schedule {
     let mut schedule = Schedule::default();
+    // One chain, nothing to run beside it: the multi-threaded default only
+    // adds a task-pool hand-off per system, every prediction replay included.
+    schedule.set_executor(bevy_ecs::schedule::SingleThreadedExecutor::new());
     schedule.add_systems(
         (
             advance_time_system,
