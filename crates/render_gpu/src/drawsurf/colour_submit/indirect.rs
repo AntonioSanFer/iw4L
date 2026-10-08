@@ -11,12 +11,10 @@ const ARG_WORDS: usize = 5;
 /// Read once, through the same rule as every other switch a paired run is
 /// alternated across: `IW4L_MULTI_DRAW=0` turns it off.
 ///
-/// TODO(check multi-draw on Android): on a Mali-G615 phone (Dimensity 7300,
-/// 2026-10-07) the path was `capable` and, forced on, left the render thread
-/// at 29-33 ms p50 on mp_abandon, the same as without it, though wgpu's
-/// `encode_render_pass` was 38% of that thread. Unchecked: how many draws
-/// `ExactIndirectDraws` actually folds there (`folded` vs `batches`), and
-/// whether runs break on per-draw state so nothing merges.
+/// On a Mali-G615 phone (Dimensity 7300, mp_abandon spawned, 2026-10-08) it
+/// folds 4049 draw commands into 617 multi-draws and, in alternating runs,
+/// takes the render thread from 32.8 to 31.3 ms p50 (p95 40.6 to 39.0) with
+/// the same image. The main thread was the limit there, so fps did not move.
 pub(super) fn multi_draw_requested() -> bool {
     static REQUESTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *REQUESTED.get_or_init(|| perf::switch("IW4L_MULTI_DRAW"))
@@ -33,9 +31,6 @@ pub(super) struct ExactIndirectDraws {
     resident_allocation: u64,
 
     pub(super) uploaded_words: u32,
-
-    pub(super) folded: u32,
-    pub(super) batches: u32,
 }
 
 impl ExactIndirectDraws {
@@ -56,8 +51,6 @@ impl ExactIndirectDraws {
         adapter: &RenderAdapter,
         queue: &RenderQueue,
     ) {
-        self.folded = 0;
-        self.batches = 0;
         self.live = 0;
         self.uploaded_words = 0;
         if !multi_draw_requested() || !Self::capable(device, adapter) {
